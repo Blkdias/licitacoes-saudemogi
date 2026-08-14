@@ -1184,11 +1184,9 @@
         // ============================================================================
         const SistemaAuth = {
             usuarios: {
-                admin: { senha: '__AUTH_SUPABASE__', nivel: 'admin', nome: 'Administrador', permissoes: ['tudo'] },
                 publico: { senha: 'publico', nivel: 'consulta', nome: 'Usuário Público', permissoes: ['visualizar_dashboard', 'consultar_licitacoes', 'ver_calendario'] }
             },
             fazerLogin(usuario, senha, tipo) {
-                if (tipo === 'admin' && usuario === 'admin' && senha === '__AUTH_SUPABASE__') return { sucesso: true, dados: this.usuarios.admin };
                 if (tipo === 'publico' && senha === 'publico') return { sucesso: true, dados: this.usuarios.publico };
                 return { sucesso: false, erro: 'Credenciais inválidas' };
             },
@@ -1205,15 +1203,6 @@
             const senha = document.getElementById('login-pass').value;
             const tipo = document.querySelector('input[name="login-type"]:checked')?.value || 'publico';
 
-            if (tipo === 'admin' && usuario === 'admin' && senha === '__AUTH_SUPABASE__') {
-                localStorage.setItem('usuario_logado', JSON.stringify({ nome: 'Administrador', nivel: 'admin', permissoes: ['tudo'] }));
-                document.getElementById('login-screen').style.display = 'none';
-                document.getElementById('app-container').style.display = 'block';
-                configurarUIporNivel('admin');
-                inicializarAppCompleto();
-                mostrarNotificacao('Login administrativo realizado com sucesso!', 'success');
-                return;
-            }
             if (tipo === 'publico' && senha === 'publico') {
                 localStorage.setItem('usuario_logado', JSON.stringify({ nome: usuario || 'Usuário Público', nivel: 'consulta', permissoes: ['visualizar_dashboard', 'consultar_licitacoes', 'ver_calendario'] }));
                 document.getElementById('login-screen').style.display = 'none';
@@ -1223,7 +1212,7 @@
                 mostrarNotificacao('Acesso público concedido', 'success');
                 return;
             }
-            alert('Credenciais inválidas. Use admin/ para administrador ou qualquer usuário/publico para consulta pública.');
+            alert('Credenciais inválidas. O acesso administrativo exige autenticação pelo Supabase.');
         }
 
         function fazerLogout() { if (confirm('Deseja realmente sair do sistema?')) SistemaAuth.fazerLogout(); }
@@ -1584,8 +1573,12 @@
             const selectAno = document.getElementById('filtro-ano');
             if (!selectAno) return;
             const anos = new Set();
-            AppState.licitacoes.forEach(lic => { if (lic.dataAbertura) anos.add(new Date(lic.dataAbertura).getFullYear()); });
-            AppState.requisicoes.forEach(req => { if (req.dataLimite) anos.add(new Date(req.dataLimite).getFullYear()); });
+            const adicionarAnoValido = valor => {
+                const ano = new Date(valor).getFullYear();
+                if (Number.isInteger(ano) && ano >= 2000 && ano <= 2100) anos.add(ano);
+            };
+            AppState.licitacoes.forEach(lic => { if (lic.dataAbertura) adicionarAnoValido(lic.dataAbertura); });
+            AppState.requisicoes.forEach(req => { if (req.dataLimite) adicionarAnoValido(req.dataLimite); });
             const anosArray = Array.from(anos).sort((a, b) => b - a);
             selectAno.innerHTML = '<option value="todos">Todos os anos</option>';
             anosArray.forEach(ano => {
@@ -2003,7 +1996,10 @@ if (AppState.filtrosRequisicoes.search) {
             if (AppState.requisicoes.length === 0) { mostrarNotificacao('Nenhuma requisição cadastrada', 'info'); return; }
             const modal = document.createElement('div');
             modal.className = 'modal';
-            modal.innerHTML = `<div class="modal-content" style="max-width: 800px;"><button class="close" onclick="this.parentElement.parentElement.remove()">×</button><h2>📊 Resumo de Todos os Fluxos</h2><div class="workflow-stats"><div class="stat-card-small"><div class="stat-icon">🔄</div><div class="stat-value">${AppState.requisicoes.length}</div><div class="stat-label">Total Requisições</div></div><div class="stat-card-small"><div class="stat-icon">🏃</div><div class="stat-value">${AppState.requisicoes.filter(r => r.status === 'Em Andamento').length}</div><div class="stat-label">Em Andamento</div></div><div class="stat-card-small"><div class="stat-icon">✅</div><div class="stat-value">${AppState.requisicoes.filter(r => r.status === 'Concluída').length}</div><div class="stat-label">Concluídas</div></div><div class="stat-card-small"><div class="stat-icon">🎯</div><div class="stat-value">${AppState.requisicoes.filter(r => r.fluxoPersonalizado).length}</div><div class="stat-label">Fluxos Personalizados</div></div></div><h4 class="mt-3">📋 Fluxos por Setor Atual:</h4><div class="table-container mt-2"><table><thead><tr><th>Setor Atual</th><th>Quantidade</th><th>Ações</th></tr></thead><tbody>${Object.entries(AppState.requisicoes.reduce((acc, req) => { acc[req.setorAtual] = (acc[req.setorAtual] || 0) + 1; return acc; }, {})).map(([setor, quantidade]) => `<tr><td><strong>${Validador.sanitizarHTML(setor)}</strong></td><td><span class="badge badge-primary">${quantidade}</span></td><td><button class="btn-sm btn-outline" onclick="filtrarPorSetor('${setor.replace(/'/g, "\\'")}')">🔍 Ver</button></td></tr>`).join('')}</tbody></table></div><div class="flex-between mt-3"><button class="btn btn-outline" onclick="voltarWorkflowTodas()">↩️ Voltar Todas</button><button class="btn btn-success" onclick="avancarWorkflowTodas()">▶️ Avançar Todas</button></div></div></div>`;
+            modal.innerHTML = `<div class="modal-content" style="max-width: 800px;"><button class="close" onclick="this.parentElement.parentElement.remove()">×</button><h2>📊 Resumo de Todos os Fluxos</h2><div class="workflow-stats"><div class="stat-card-small"><div class="stat-icon">🔄</div><div class="stat-value">${AppState.requisicoes.length}</div><div class="stat-label">Total Requisições</div></div><div class="stat-card-small"><div class="stat-icon">🏃</div><div class="stat-value">${AppState.requisicoes.filter(r => r.status === 'Em Andamento').length}</div><div class="stat-label">Em Andamento</div></div><div class="stat-card-small"><div class="stat-icon">✅</div><div class="stat-value">${AppState.requisicoes.filter(r => r.status === 'Concluída').length}</div><div class="stat-label">Concluídas</div></div><div class="stat-card-small"><div class="stat-icon">🎯</div><div class="stat-value">${AppState.requisicoes.filter(r => r.fluxoPersonalizado).length}</div><div class="stat-label">Fluxos Personalizados</div></div></div><h4 class="mt-3">📋 Fluxos por Setor Atual:</h4><div class="table-container mt-2"><table><thead><tr><th>Setor Atual</th><th>Quantidade</th><th>Ações</th></tr></thead><tbody>${Object.entries(AppState.requisicoes.reduce((acc, req) => { acc[req.setorAtual] = (acc[req.setorAtual] || 0) + 1; return acc; }, {})).map(([setor, quantidade]) => `<tr><td><strong>${Validador.sanitizarHTML(setor)}</strong></td><td><span class="badge badge-primary">${quantidade}</span></td><td><button class="btn-sm btn-outline" data-filtrar-setor="${Validador.sanitizarAtributo(String(setor ?? ''))}">🔍 Ver</button></td></tr>`).join('')}</tbody></table></div><div class="flex-between mt-3"><button class="btn btn-outline" onclick="voltarWorkflowTodas()">↩️ Voltar Todas</button><button class="btn btn-success" onclick="avancarWorkflowTodas()">▶️ Avançar Todas</button></div></div></div>`;
+            modal.querySelectorAll('[data-filtrar-setor]').forEach(botao => {
+                botao.addEventListener('click', () => filtrarPorSetor(botao.dataset.filtrarSetor || ''));
+            });
             document.body.appendChild(modal);
             modal.style.display = 'block';
         }
@@ -2845,9 +2841,31 @@ function renderWorkflowProgress(l) {
         function verDetalhesCompletosFluxoLicitacao(id) {
             const lic = AppState.licitacoes.find(l => l.id === id);
             if (!lic) return;
+            const n = valor => Validador.sanitizarHTML(String(valor ?? ''));
+            const origensHtml = Array.isArray(lic.requisicoesOrigem) && lic.requisicoesOrigem.length
+                ? `<div class="alertas-container mb-3"><strong>Origem:</strong> ${lic.requisicoesOrigem.map(reqId => {
+                    const req = AppState.requisicoes.find(r => r.id === reqId);
+                    if (!req) return '';
+                    return `<div>${n(req.tipo)} ${n(req.numero)} - ${n(String(req.objeto ?? '').slice(0, 50))}...</div>`;
+                }).join('')}</div>`
+                : '';
+            const timelineHtml = Array.isArray(lic.workflow) && lic.workflow.length
+                ? lic.workflow.map((setor, index) => {
+                    const isCurrent = index === (lic.workflowIndex || 0);
+                    const isCompleted = index < (lic.workflowIndex || 0);
+                    const classe = isCompleted ? 'completed' : (isCurrent ? 'active' : '');
+                    const estado = isCurrent
+                        ? '<span class="badge badge-primary">(Atual)</span>'
+                        : (isCompleted ? '<span class="badge badge-success">(Concluído)</span>' : '<span class="badge badge-secondary">(Pendente)</span>');
+                    return `<div class="timeline-item ${classe}"><div class="timeline-content"><strong>${n(setor)}</strong> ${estado}</div></div>`;
+                }).join('')
+                : '<p>Sem fluxo definido</p>';
+            const historicoHtml = Array.isArray(lic.historicoWorkflow) && lic.historicoWorkflow.length
+                ? `<div class="mt-3"><h4>Histórico de Movimentações:</h4><div style="max-height: 200px; overflow-y: auto;">${lic.historicoWorkflow.map(item => `<div class="sync-history-item"><div><strong>${n(formatarDataHora(item.data))}</strong><br><small>${n(item.acao)} ${n(item.setor)}</small></div><div><small>${n(item.responsavel)}</small></div></div>`).join('')}</div></div>`
+                : '';
             const modal = document.createElement('div');
             modal.className = 'modal';
-            modal.innerHTML = `<div class="modal-content" style="max-width: 700px;"><button class="close" onclick="this.parentElement.parentElement.remove()">×</button><h2>📊 Fluxo Interno - ${Validador.sanitizarHTML(lic.numeroLicitacao)}</h2>${lic.requisicoesOrigem ? `<div class="alertas-container mb-3"><strong>Origem:</strong> ${lic.requisicoesOrigem.map(id => { const req = AppState.requisicoes.find(r => r.id === id); return req ? `<div>${req.tipo} ${req.numero} - ${req.objeto.substring(0, 50)}...</div>` : ''; }).join('')}</div>` : ''}<div class="timeline-container"><h4>Etapas do Processo:</h4><div class="timeline">${lic.workflow ? lic.workflow.map((setor, index) => { const isCurrent = index === (lic.workflowIndex || 0); const isCompleted = index < (lic.workflowIndex || 0); return `<div class="timeline-item ${isCompleted ? 'completed' : (isCurrent ? 'active' : '')}"><div class="timeline-content"><strong>${Validador.sanitizarHTML(setor)}</strong> ${isCurrent ? '<span class="badge badge-primary">(Atual)</span>' : (isCompleted ? '<span class="badge badge-success">(Concluído)</span>' : '<span class="badge badge-secondary">(Pendente)</span>')}</div></div>`; }).join('') : '<p>Sem fluxo definido</p>'}</div></div>${lic.historicoWorkflow?.length ? `<div class="mt-3"><h4>Histórico de Movimentações:</h4><div style="max-height: 200px; overflow-y: auto;">${lic.historicoWorkflow.map(item => `<div class="sync-history-item"><div><strong>${formatarDataHora(item.data)}</strong><br><small>${Validador.sanitizarHTML(item.acao)} ${Validador.sanitizarHTML(item.setor)}</small></div><div><small>${Validador.sanitizarHTML(item.responsavel)}</small></div></div>`).join('')}</div></div>` : ''}<div class="flex-between mt-3"><button class="btn btn-secondary" onclick="this.parentElement.parentElement.remove()">Fechar</button><div class="flex gap-1"><button class="btn btn-outline" onclick="voltarWorkflowLicitacao(${lic.id})" ${(lic.workflowIndex || 0) <= 0 ? 'disabled' : ''}>↩️ Voltar Etapa</button><button class="btn" onclick="avancarWorkflowLicitacao(${lic.id})" ${(lic.workflowIndex || 0) >= (lic.workflow?.length - 1 || 0) ? 'disabled' : ''}>▶️ Avançar Etapa</button></div></div></div></div>`;
+            modal.innerHTML = `<div class="modal-content" style="max-width: 700px;"><button class="close" onclick="this.parentElement.parentElement.remove()">×</button><h2>📊 Fluxo Interno - ${n(lic.numeroLicitacao)}</h2>${origensHtml}<div class="timeline-container"><h4>Etapas do Processo:</h4><div class="timeline">${timelineHtml}</div></div>${historicoHtml}<div class="flex-between mt-3"><button class="btn btn-secondary" onclick="this.parentElement.parentElement.remove()">Fechar</button><div class="flex gap-1"><button class="btn btn-outline" onclick="voltarWorkflowLicitacao(${Number(lic.id)})" ${(lic.workflowIndex || 0) <= 0 ? 'disabled' : ''}>↩️ Voltar Etapa</button><button class="btn" onclick="avancarWorkflowLicitacao(${Number(lic.id)})" ${(lic.workflowIndex || 0) >= (lic.workflow?.length - 1 || 0) ? 'disabled' : ''}>▶️ Avançar Etapa</button></div></div></div></div>`;
             document.body.appendChild(modal);
             modal.style.display = 'block';
         }
@@ -4000,10 +4018,10 @@ function importarBackupAvancado() {
                         <button class="close" onclick="this.parentElement.parentElement.remove(); window.tempBackupData = null; if(document.querySelector('input[type=file]')) document.body.removeChild(document.querySelector('input[type=file]'))">×</button>
                         <h2>📋 Preview do Backup</h2>
                         <div class="alertas-container">
-                            <p><strong>Data:</strong> ${formatarDataHora(backupFormatado.metadados.dataBackup)}</p>
-                            <p><strong>Versão:</strong> ${backupFormatado.metadados.versaoSistema || 'Antiga'}</p>
-                            <p><strong>Licitações:</strong> ${backupFormatado.metadados.totalLicitacoes}</p>
-                            <p><strong>Requisições:</strong> ${backupFormatado.metadados.totalRequisicoes}</p>
+                            <p><strong>Data:</strong> ${Validador.sanitizarHTML(String(formatarDataHora(backupFormatado.metadados.dataBackup) || ''))}</p>
+                            <p><strong>Versão:</strong> ${Validador.sanitizarHTML(String(backupFormatado.metadados.versaoSistema || 'Antiga'))}</p>
+                            <p><strong>Licitações:</strong> ${Validador.sanitizarHTML(String(backupFormatado.metadados.totalLicitacoes ?? 0))}</p>
+                            <p><strong>Requisições:</strong> ${Validador.sanitizarHTML(String(backupFormatado.metadados.totalRequisicoes ?? 0))}</p>
                             <p><strong>Setores:</strong> ${backupFormatado.dados.setores?.length || 0}</p>
                             <p><strong>Modalidades:</strong> ${backupFormatado.dados.modalidades?.length || 0}</p>
                             <p><strong>Fluxos:</strong> ${backupFormatado.dados.fluxos?.length || 0}</p>
@@ -5173,8 +5191,6 @@ console.log('✅ Patch v33.1 — login administrativo corrigido');
 })();
 </script>
 
-</body>)
-     ============================================================ -->
 <script>
 /* ============================================================
    ORDENAÇÃO RÁPIDA POR NÚMERO DA LICITAÇÃO
@@ -7093,7 +7109,9 @@ function carregarAnosFiltroRequisicoes() {
     
     const anos = new Set();
     AppState.requisicoes.forEach(r => {
-        if (r.dataLimite) anos.add(new Date(r.dataLimite).getFullYear());
+        if (!r.dataLimite) return;
+        const ano = new Date(r.dataLimite).getFullYear();
+        if (Number.isInteger(ano) && ano >= 2000 && ano <= 2100) anos.add(ano);
     });
     
     const anosArray = Array.from(anos).sort((a, b) => b - a);
@@ -7131,10 +7149,8 @@ const AuthSupabase = {
     url: 'https://tzdpksqrfhpytrwwirlz.supabase.co',
     key: SUPABASE_CONFIG.key,
     
-    // Usuários padrão (local fallback)
+    // Somente consulta local; perfis com edição exigem Supabase Auth.
     usuariosLocal: {
-        'admin': { senha: '__AUTH_SUPABASE__', nome: 'Administrador', nivel: 'admin', permissoes: ['tudo'] },
-        'gestor': { senha: '__AUTH_SUPABASE__', nome: 'Gestor de Licitações', nivel: 'gestor', permissoes: ['criar', 'editar', 'excluir', 'visualizar'] },
         'consulta': { senha: 'consulta', nome: 'Usuário de Consulta', nivel: 'consulta', permissoes: ['visualizar'] }
     },
     
@@ -7170,7 +7186,7 @@ const AuthSupabase = {
             console.log('Supabase auth falhou, usando local:', e.message);
         }
         
-        // Fallback para usuários locais
+        // O fallback local nunca concede privilégios de edição.
         const userLocal = this.usuariosLocal[usuario];
         if (userLocal && userLocal.senha === senha) {
             return {
@@ -7337,21 +7353,11 @@ async function fazerLoginMelhorado() {
     try {
         let resultado;
         
-        // Login rápido para usuários conhecidos
-        if (tipoAcesso === 'admin' && usuario === 'admin' && senha === '__AUTH_SUPABASE__') {
-            resultado = {
-                sucesso: true,
-                usuario: { nome: 'Administrador', nivel: 'admin', permissoes: ['tudo'] }
-            };
-        } else if (tipoAcesso === 'consulta' && senha === 'consulta') {
+        // O único atalho local é o modo de consulta sem privilégios.
+        if (tipoAcesso === 'consulta' && senha === 'consulta') {
             resultado = {
                 sucesso: true,
                 usuario: { nome: usuario || 'Usuário de Consulta', nivel: 'consulta', permissoes: ['visualizar'] }
-            };
-        } else if (usuario === 'gestor' && senha === '__AUTH_SUPABASE__') {
-            resultado = {
-                sucesso: true,
-                usuario: { nome: 'Gestor de Licitações', nivel: 'gestor', permissoes: ['criar', 'editar', 'visualizar'] }
             };
         } else {
             resultado = await AuthSupabase.login(usuario, senha);
@@ -7729,7 +7735,7 @@ function adicionarBotaoDashboardUnificado() {
     
     // Insere antes do botão de sair
     const sairBtn = headerActions.querySelector('[onclick*="fazerLogout"]');
-    if (sairBtn) {
+    if (sairBtn && sairBtn.parentElement === headerActions) {
         headerActions.insertBefore(btn, sairBtn);
     } else {
         headerActions.appendChild(btn);
@@ -12160,6 +12166,9 @@ console.log('✅ Patch v25.5 — Ordenação de requisições corrigida');
         window.exportarDispensasExcel = exportarDispensasExcel;
         window.exportarDispensasPDF = exportarDispensasPDF;
         window.atualizarSubelementos = atualizarSubelementos;
+        window.obterLimiteNatureza = obterLimiteNatureza;
+        window.calcularTotalGastoNatureza = calcularTotalGastoNatureza;
+        window.calcularTotalGastoSubelemento = calcularTotalGastoSubelemento;
         window.adicionarLinhaLimiteDispensa = adicionarLinhaLimiteDispensa;
         window.removerLinhaLimiteDispensa = removerLinhaLimiteDispensa;
         window.salvarConfiguracoesDispensa = salvarConfiguracoesDispensa;
@@ -14787,7 +14796,7 @@ const CC = {
             </div>
             <div class="cc-oficial-muted" style="margin-top:.55rem">Vínculo: ${this.esc(match.criterio)} · Sincronizado: ${atualizado}</div>
             <div class="cc-oficial-actions">
-                <button type="button" onclick="ConsultaComprasIntegracao.verDetalhes('${this.esc(x.consulta_id)}','${this.esc(x.consulta_tipo)}')">📜 Ocorrências oficiais</button>
+                <button type="button" data-cc-detalhes="1" data-consulta-id="${this.esc(x.consulta_id)}" data-consulta-tipo="${this.esc(x.consulta_tipo)}">📜 Ocorrências oficiais</button>
                 <button type="button" onclick="ConsultaComprasIntegracao.carregar(true)">🔄 Atualizar leitura</button>
             </div>
         </div>`;
@@ -14830,14 +14839,20 @@ const CC = {
     }
 };
 window.ConsultaComprasIntegracao=CC;
+document.addEventListener('click',event=>{
+    const botao=event.target.closest?.('[data-cc-detalhes]');
+    if(!botao) return;
+    CC.verDetalhes(botao.dataset.consultaId||'',botao.dataset.consultaTipo||'');
+});
 
 /* ---------------- AUTH SEGURO / SUPABASE AUTH ---------------- */
 const AuthSeguro = {
     storageKey:'supa_session_saude_v33',
     session(){ try{return JSON.parse(localStorage.getItem(this.storageKey)||'null')}catch{return null} },
     save(s){ localStorage.setItem(this.storageKey,JSON.stringify(s)); },
-    clear(){ localStorage.removeItem(this.storageKey); localStorage.removeItem('auth_token'); },
+    clear(){ localStorage.removeItem(this.storageKey); localStorage.removeItem('auth_token'); localStorage.removeItem('usuario_logado'); },
     async login(email,password){
+        this.clear();
         const resp=await fetch(`${SUPABASE_CONFIG.url}/auth/v1/token?grant_type=password`,{
             method:'POST', headers:{apikey:SUPABASE_CONFIG.key,'Content-Type':'application/json'},
             body:JSON.stringify({email,password}), signal:AbortSignal.timeout(12000)
@@ -14845,8 +14860,8 @@ const AuthSeguro = {
         const data=await resp.json().catch(()=>({}));
         if(!resp.ok) throw new Error(data.error_description||data.msg||'Credenciais inválidas');
         const session={access_token:data.access_token,refresh_token:data.refresh_token,expires_at:Math.floor(Date.now()/1000)+(data.expires_in||3600),user:data.user};
-        this.save(session);
         const perfil=await this.perfil(session.access_token,data.user?.id);
+        this.save(session);
         return {session,perfil};
     },
     async refresh(){
@@ -14877,9 +14892,15 @@ const AuthSeguro = {
     usuario(){ try{return JSON.parse(localStorage.getItem('usuario_logado')||'{}')}catch{return{}} },
     podeEditar(){ const u=this.usuario(); return !!this.session()?.access_token && ['admin','gestor'].includes(u.nivel); },
     async logout(){
-        const t=await this.token();
-        if(t){try{await fetch(`${SUPABASE_CONFIG.url}/auth/v1/logout`,{method:'POST',headers:{apikey:SUPABASE_CONFIG.key,Authorization:`Bearer ${t}`}})}catch(e){}}
-        this.clear(); localStorage.removeItem('usuario_logado'); location.reload();
+        try{
+            const t=await this.token();
+            if(t) await fetch(`${SUPABASE_CONFIG.url}/auth/v1/logout`,{method:'POST',headers:{apikey:SUPABASE_CONFIG.key,Authorization:`Bearer ${t}`}});
+        }catch(e){
+            console.warn('[Auth] Não foi possível encerrar a sessão remota:',e);
+        }finally{
+            this.clear();
+            location.reload();
+        }
     }
 };
 window.AuthSeguro=AuthSeguro;
@@ -14896,7 +14917,17 @@ if(typeof AuthSupabase!=='undefined'){
 
 // RLS é a segurança real. Este método controla apenas a interface.
 if(typeof SistemaAuth!=='undefined'){
-    SistemaAuth.verificarPermissao=function(){ return AuthSeguro.podeEditar(); };
+    const permissoesGestor=new Set([
+        'criar_requisicao','salvar_requisicao','editar_requisicao','excluir_requisicao',
+        'criar_licitacao','salvar_licitacao','editar_licitacao','excluir_licitacao',
+        'criar_dispensa','salvar_dispensa','gerenciar_workflow'
+    ]);
+    SistemaAuth.verificarPermissao=function(acao){
+        const usuario=AuthSeguro.usuario();
+        if(!AuthSeguro.session()?.access_token) return false;
+        if(usuario.nivel==='admin') return true;
+        return usuario.nivel==='gestor' && permissoesGestor.has(acao);
+    };
     SistemaAuth.fazerLogin=function(){ return {sucesso:false,erro:'Login local desativado; use Supabase Auth.'}; };
     SistemaAuth.fazerLogout=function(){ AuthSeguro.logout(); };
     try{delete SistemaAuth.usuarios;}catch(e){}
@@ -15291,7 +15322,7 @@ window.renderizarPainelConsultaCompras=function(){
         <td>${cc34Esc(x.responsavel||'—')}</td>
         <td>${cc34Esc(x.local_atual||'—')}</td>
         <td>${cc34Data(x.sincronizado_em)}</td>
-        <td><button class="btn btn-outline btn-sm" onclick="ConsultaComprasIntegracao.verDetalhes('${cc34Esc(x.consulta_id)}','${cc34Esc(x.consulta_tipo)}')">📜 Andamento</button></td>
+        <td><button class="btn btn-outline btn-sm" data-cc-detalhes="1" data-consulta-id="${cc34Esc(x.consulta_id)}" data-consulta-tipo="${cc34Esc(x.consulta_tipo)}">📜 Andamento</button></td>
       </tr>`).join('')}</tbody></table></div>`;
 };
 
@@ -15415,7 +15446,7 @@ CC.boxRequisicao=function(req,m){
         <div><strong>Responsável:</strong> ${this.esc(x.responsavel||'—')}</div><div><strong>Requisição oficial:</strong> ${this.esc(refs||req.tipo+' '+req.numero)}</div>
       </div>
       <div class="cc-oficial-muted" style="margin-top:.55rem">Vínculo: ${this.esc(m.criterio)} · Sincronizado: ${this.data(x.sincronizado_em)}</div>
-      <div class="cc-oficial-actions"><button type="button" onclick="ConsultaComprasIntegracao.verDetalhes('${this.esc(x.consulta_id)}','${this.esc(x.consulta_tipo)}')">📜 Ocorrências oficiais</button></div>
+      <div class="cc-oficial-actions"><button type="button" data-cc-detalhes="1" data-consulta-id="${this.esc(x.consulta_id)}" data-consulta-tipo="${this.esc(x.consulta_tipo)}">📜 Ocorrências oficiais</button></div>
     </div>`;
 };
 
@@ -15437,7 +15468,7 @@ CC.boxDispensa=function(d){
       <div class="cc-oficial-grid"><div><strong>Processo:</strong> ${this.esc(c.numero_processo||'—')}</div><div><strong>Situação oficial:</strong> ${this.esc(c.situacao||'—')}</div>
       <div><strong>Local atual:</strong> ${this.esc(c.local_atual||'—')}</div><div><strong>RC/RS vinculada:</strong> ${this.esc(refs||'—')}</div></div>
       ${d.natureza==='A classificar'?'<div class="cc-oficial-muted" style="margin-top:.55rem"><b>⚠️ Natureza não inferida automaticamente.</b> Classifique manualmente para não distorcer o controle de limites.</div>':''}
-      <div class="cc-oficial-actions"><button type="button" onclick="ConsultaComprasIntegracao.verDetalhes('${this.esc(c.consulta_id)}','${this.esc(c.consulta_tipo)}')">📜 Ocorrências oficiais</button></div>
+      <div class="cc-oficial-actions"><button type="button" data-cc-detalhes="1" data-consulta-id="${this.esc(c.consulta_id)}" data-consulta-tipo="${this.esc(c.consulta_tipo)}">📜 Ocorrências oficiais</button></div>
     </div>`;
 };
 
@@ -15590,7 +15621,7 @@ CC.boxDispensa=function(d){
       </div>
       ${nat==='A classificar'?'<div class="cc-oficial-muted" style="margin-top:.55rem"><b>⚠️ Natureza não pôde ser classificada com segurança.</b> Revise manualmente.</div>':''}
       ${c.nota_observacao?`<div class="cc-oficial-muted" style="margin-top:.55rem"><b>Nota oficial:</b> ${esc(c.nota_observacao)}</div>`:''}
-      <div class="cc-oficial-actions"><button type="button" onclick="ConsultaComprasIntegracao.verDetalhes('${esc(c.consulta_id)}','${esc(c.consulta_tipo)}')">📜 Ocorrências oficiais</button></div>
+      <div class="cc-oficial-actions"><button type="button" data-cc-detalhes="1" data-consulta-id="${esc(c.consulta_id)}" data-consulta-tipo="${esc(c.consulta_tipo)}">📜 Ocorrências oficiais</button></div>
     </div>`;
 };
 
@@ -16183,7 +16214,7 @@ try{debouncePesquisaDispensa=window.debouncePesquisaDispensaV365}catch(_){ }
 function limparUrlAuth365(){
   try{history.replaceState({},document.title,location.pathname+(location.search&&!/(access_token|refresh_token|type|error|code)=/i.test(location.search)?location.search:''));location.hash='';}catch(_){ }
 }
-function modalSenha365(accessToken,refreshToken,user,type){
+function modalSenha365(accessToken,type){
   if(document.getElementById('modal-auth-v365'))return;
   const wrap=document.createElement('div');wrap.id='modal-auth-v365';
   wrap.innerHTML=`<div class="auth-card"><h3>🔐 Definir senha de acesso</h3><p>${type==='invite'?'Seu convite foi validado.':'O link de recuperação foi validado.'} Crie uma senha com pelo menos 8 caracteres.</p><label>Nova senha</label><input id="v365-pass1" type="password" minlength="8" autocomplete="new-password"><label>Confirmar senha</label><input id="v365-pass2" type="password" minlength="8" autocomplete="new-password"><div id="v365-auth-error" class="auth-error"></div><div class="auth-actions"><button class="btn" id="v365-save-pass">Salvar senha</button></div></div>`;
@@ -16200,7 +16231,7 @@ function modalSenha365(accessToken,refreshToken,user,type){
       const resp=await fetch(`${cfg.url}/auth/v1/user`,{method:'PUT',headers:{apikey:cfg.key,Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:JSON.stringify({password:p1})});
       const data=await resp.json().catch(()=>({}));
       if(!resp.ok)throw new Error(data.msg||data.error_description||data.message||'Não foi possível definir a senha.');
-      try{window.AuthSeguro?.save?.({access_token:accessToken,refresh_token:refreshToken||'',expires_at:Math.floor(Date.now()/1000)+3600,user:data||user||{}})}catch(_){ }
+      try{window.AuthSeguro?.clear?.()}catch(_){ }
       wrap.remove();limparUrlAuth365();
       if(typeof window.mostrarNotificacao==='function')window.mostrarNotificacao('Senha definida com sucesso. Entre com seu e-mail e a nova senha.','success');else alert('Senha definida com sucesso. Entre com seu e-mail e a nova senha.');
     }catch(ex){falhar(ex.message||String(ex));btn.disabled=false;btn.textContent='Salvar senha';}
@@ -16211,13 +16242,11 @@ async function processarAuthCallback365(){
   const erro=hp.get('error_description')||qp.get('error_description')||hp.get('error')||qp.get('error');
   if(erro){if(typeof window.mostrarNotificacao==='function')window.mostrarNotificacao(decodeURIComponent(erro),'error');return;}
   const access=hp.get('access_token')||qp.get('access_token');
-  const refresh=hp.get('refresh_token')||qp.get('refresh_token')||'';
   const type=norm365(hp.get('type')||qp.get('type')||'');
   if(!access||!['invite','recovery'].includes(type))return;
-  let user=null;
-  try{const cfg=(typeof SUPABASE_CONFIG!=='undefined'?SUPABASE_CONFIG:window.SUPABASE_CONFIG);const r=await fetch(`${cfg.url}/auth/v1/user`,{headers:{apikey:cfg.key,Authorization:`Bearer ${access}`}});if(r.ok)user=await r.json();}catch(_){ }
-  try{window.AuthSeguro?.save?.({access_token:access,refresh_token:refresh,expires_at:Math.floor(Date.now()/1000)+(Number(hp.get('expires_in')||qp.get('expires_in'))||3600),user:user||{}})}catch(_){ }
-  modalSenha365(access,refresh,user,type);
+  try{window.AuthSeguro?.clear?.()}catch(_){ }
+  limparUrlAuth365();
+  modalSenha365(access,type);
 }
 
 function iniciar365(){
