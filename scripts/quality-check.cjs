@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const vm = require('node:vm');
 
 const html = fs.readFileSync('index.html', 'utf8');
@@ -249,6 +250,61 @@ regression('geracao registra origem e preserva fluxo escolhido', () => {
     licitacao.workflow[0] === 'Fluxo confirmado' && licitacao.historicoWorkflow.length === 1;
 });
 
+regression('dashboard unificado filtra ano e fonte sem deslocar datas ISO', () => {
+  const context = { ROTULO_FONTE_V37: { licitacao: 'Licitacoes', requisicao: 'Requisicoes', direta: 'Diretas' } };
+  context.normalizarDashboardUnificado = compileNamedFunction('normalizarDashboardUnificado', context);
+  context.numeroDashboardUnificado = compileNamedFunction('numeroDashboardUnificado', context);
+  context.dataLocalDashboardUnificado = compileNamedFunction('dataLocalDashboardUnificado', context);
+  context.classeStatusDashboardUnificado = compileNamedFunction('classeStatusDashboardUnificado', context);
+  context.tipoDiretaDashboardUnificado = compileNamedFunction('tipoDiretaDashboardUnificado', context);
+  context.chaveRegistroDashboardUnificado = compileNamedFunction('chaveRegistroDashboardUnificado', context);
+  context.criarRegistroDashboardUnificado = compileNamedFunction('criarRegistroDashboardUnificado', context);
+  context.construirRegistrosDashboardUnificado = compileNamedFunction('construirRegistrosDashboardUnificado', context);
+  context.filtrarRegistrosDashboardUnificado = compileNamedFunction('filtrarRegistrosDashboardUnificado', context);
+  context.criarSnapshotDashboardUnificado = compileNamedFunction('criarSnapshotDashboardUnificado', context);
+
+  const dados = {
+    licitacoes: [
+      { id: 1, numeroLicitacao: '1/2025', dataAbertura: '2025-03-01', situacao: 'Em andamento', modalidade: 'Pregao', valor: 'R$ 1.234,56', requisicoesOrigem: [10] },
+      { id: 2, numeroLicitacao: '2/2026', dataAbertura: '2026-01-01', situacao: 'Concluida', modalidade: 'Concorrencia', valor: 200, valorFinal: 180 }
+    ],
+    requisicoes: [
+      { id: 10, numero: '10/2025', dataCriacao: '2025-04-02T12:00:00Z', status: 'Em Analise', tipo: 'RC', valor: 50 },
+      { id: 11, numero: '11/2026', dataCriacao: '2026-02-01', status: 'Concluida', tipo: 'RS', valor: 70 }
+    ],
+    diretas: [
+      { id: 20, numero: '20/2025', data: '2025-05-01', status: 'Em Andamento', tipoContratacao: 'Dispensa', ordemJudicial: true, valor: 30, consultaCompras: { consulta_tipo: 4, consulta_id: 900 } },
+      { id: 21, numero: 'duplicada', data: '2025-05-01', status: 'Em Andamento', tipoContratacao: 'Dispensa', ordemJudicial: true, valor: 30, consultaCompras: { consulta_tipo: 4, consulta_id: 900 } },
+      { id: 22, numero: '22/2026', data: '2026-06-01', status: 'Cancelada', tipoContratacao: 'Inexigibilidade', valor: 40 },
+      { id: 23, numero: 'data-invalida', data: '42026-04-30', status: '', tipoContratacao: 'Dispensa', valor: 5 }
+    ]
+  };
+
+  const todos = context.criarSnapshotDashboardUnificado(dados, {});
+  const ano2025 = context.criarSnapshotDashboardUnificado(dados, { ano: '2025' });
+  const diretasJudiciais = context.criarSnapshotDashboardUnificado(dados, { fonte: 'direta', judicial: 'sim' });
+  return context.dataLocalDashboardUnificado('2026-01-01').getFullYear() === 2026 &&
+    context.dataLocalDashboardUnificado('42026-04-30') === null &&
+    context.classeStatusDashboardUnificado('Suspensa') === 'excecao' &&
+    context.numeroDashboardUnificado('R$ 1.234,56') === 1234.56 &&
+    todos.registros.length === 7 && ano2025.registros.length === 3 &&
+    todos.porStatus.ativo === 3 && todos.porStatus.concluido === 2 &&
+    todos.porStatus.excecao === 1 && todos.porStatus.nao_classificado === 1 &&
+    diretasJudiciais.registros.length === 1 && todos.qualidade.requisicoesVinculadas === 1 &&
+    todos.financeiro.licitacaoEstimado === 1434.56 && todos.financeiro.licitacaoFinal === 180;
+});
+
+const brasaoPath = 'assets/branding/mogi-brasao.jpg';
+if (!fs.existsSync(brasaoPath)) {
+  fail('brasao institucional local nao encontrado.');
+} else {
+  const brasao = fs.readFileSync(brasaoPath);
+  const hash = crypto.createHash('sha256').update(brasao).digest('hex');
+  if (brasao.length !== 48038) fail(`tamanho inesperado do brasao: ${brasao.length}.`);
+  if (brasao[0] !== 0xff || brasao[1] !== 0xd8 || brasao[2] !== 0xff) fail('assinatura JPEG invalida no brasao.');
+  if (hash !== '1e5ba100c7d96a0d4a9adebac792c38eae752a21ed04991c21bee2487ccdde9b') fail(`hash inesperado do brasao: ${hash}.`);
+}
+
 const requiredRegressionPatterns = [
   ['funcoes de gasto expostas ao renderer final', /window\.calcularTotalGastoNatureza\s*=\s*calcularTotalGastoNatureza[\s\S]*window\.calcularTotalGastoSubelemento\s*=\s*calcularTotalGastoSubelemento/u],
   ['select judicial lido pelo filtro final', /e\.filtros\.judicial\s*=\s*document\.getElementById\('filtro-judicial-dispensa'\)/u],
@@ -261,10 +317,28 @@ const requiredRegressionPatterns = [
   ['salvamento aplica metadados da requisicao', /criarLicitacaoComFluxoRequisicao\(requisicoesOrigem\[0\],\s*dadosLicitacao\)/u],
   ['remocao de origem limpa o vinculo bilateral', /delete req\.licitacaoId[\s\S]*Desvinculada da licitação/u],
   ['status terminal da requisicao preservado', /!\['Concluída', 'Cancelada', 'Reprovada'\]\.includes\(req\.status\)/u]
+  ,['dashboard unificado usa ativo local do brasao', /new URL\('\.\/assets\/branding\/mogi-brasao\.jpg',document\.baseURI\)/u]
+  ,['relatorio unificado nao limita tabelas a cinquenta linhas', /body:secao\.linhas/u]
+  ,['cabecalho institucional redesenhado fora do hook da tabela', /for\(let pagina=primeiraPaginaSecao;pagina<=ultimaPaginaSecao;pagina\+\+\)\{doc\.setPage\(pagina\);desenharCabecalhoRelatorioV37/u]
+  ,['pdfs especificos nao reutilizam graficos do painel unificado', /exportarLicitacoesPDFV37[\s\S]*incluirGraficos:false[\s\S]*exportarContratacoesDiretasPDFV37[\s\S]*incluirGraficos:false/u]
+  ,['pdfs preservam conclusao responsavel e subelemento', /cabecalho:\['N\\u00famero','Processo','Objeto','Modalidade','Status','Estimado','Valor final','Abertura','Conclus\\u00e3o','Respons\\u00e1vel'\][\s\S]*cabecalho:\['N\\u00famero','Tipo','Objeto','Natureza','Subelemento'/u]
+  ,['filtro de ano usa data de entrada por modulo', /entrada:item\?\.dataAbertura\|\|item\?\.dataCriacao[\s\S]*entrada:item\?\.dataCriacao\|\|item\?\.dataLimite[\s\S]*entrada:item\?\.data\|\|item\?\.dataCriacao/u]
+  ,['valores financeiros permanecem separados por modulo', /licitacaoEstimado:[\s\S]*licitacaoFinal:[\s\S]*requisicao:[\s\S]*direta:/u]
+  ,['excel detalhado aplica moeda e filtros de coluna', /ws\['!autofilter'\][\s\S]*celula\.z='"R\$" #,##0\.00'/u]
+  ,['excel reconcilia excecoes e nao classificados', /Exce\\u00e7\\u00f5es \/ n\\u00e3o classificados[\s\S]*snapshot\.porStatus\.excecao\+snapshot\.porStatus\.nao_classificado/u]
+  ,['dash de requisicoes removido da navegacao', /querySelector\('\.tab\[onclick\*="dashboardRequisicoes"\]'\)\?\.remove\(\)/u]
+  ,['abas antigas redirecionadas para a visao geral', /\['dashboard','dashboardRequisicoes','unificado'\]\.includes\(abaAtual\)\)abrirDashboardUnificadoV37\(\)/u]
+  ,['chamadas legadas sempre abrem a visao geral', /const destino=\['dashboard','dashboardRequisicoes'\]\.includes\(nome\)\?'unificado':nome/u]
+  ,['atalho de dashboard abre a visao geral', /Ctrl \+ D = Vis\u00e3o Geral[\s\S]*mostrarAba\('unificado'\)/u]
 ];
 for (const [description, pattern] of requiredRegressionPatterns) {
   if (!pattern.test(html)) fail(`protecao ausente: ${description}.`);
 }
+if (/<div class="tab" onclick="mostrarAba\('dashboard'\)"><i>[^<]*<\/i> Dashboard<\/div>/u.test(html)) {
+  fail('aba Dashboard antiga voltou para a navegacao.');
+}
+const refreshUnificado = html.match(/if \(aba === 'unificado'\)\s+window\.renderizarDashboardUnificado\?\.\(\);/gu) || [];
+if (refreshUnificado.length < 2) fail('a Visao Geral nao acompanha todos os ciclos de atualizacao automatica.');
 
 const externalScripts = [...html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi)];
 for (const match of externalScripts) {

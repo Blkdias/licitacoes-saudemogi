@@ -408,7 +408,6 @@
             </header>
             
             <div class="tabs">
-                <div class="tab" onclick="mostrarAba('dashboard')"><i>📊</i> Dashboard</div>
                 <div class="tab active" onclick="mostrarAba('requisicoes')"><i>🔄</i> Requisições</div>
                 <div class="tab" onclick="mostrarAba('licitacoes')"><i>📋</i> Licitações</div>
                 <div class="tab" onclick="mostrarAba('calendario')"><i>📅</i> Calendário</div>
@@ -5895,6 +5894,7 @@ function iniciarAutoAtualizacao() {
         if (aba === 'licitacoes')  renderizarLicitacoes();
         if (aba === 'requisicoes') renderizarRequisicoes();
         if (aba === 'dashboard')   atualizarDashboard();
+        if (aba === 'unificado')   window.renderizarDashboardUnificado?.();
 
         const ultima = dados.metadata?.ultimaAtualizacao
             ? new Date(dados.metadata.ultimaAtualizacao).toLocaleString('pt-BR')
@@ -6349,6 +6349,7 @@ function _iniciarAutoAtualizacao() {
         if (aba === 'licitacoes')  renderizarLicitacoes();
         if (aba === 'requisicoes') renderizarRequisicoes();
         if (aba === 'dashboard')   atualizarDashboard();
+        if (aba === 'unificado')   window.renderizarDashboardUnificado?.();
 
         const ultima = row.atualizado_em
             ? new Date(row.atualizado_em).toLocaleString('pt-BR') : '—';
@@ -6635,27 +6636,12 @@ window.exportarPDF = exportarPDFCorrigido;
    PARTE 2: DASHBOARD DE REQUISIÇÕES
    ============================================================ */
 
-// Adiciona nova aba "Dashboard Requisições"
+// Mantém o painel legado disponível internamente, sem expor uma aba duplicada.
 function adicionarAbaDashboardRequisicoes() {
-    // Verifica se já existe
-    if (document.querySelector('.tab[onclick*="dashboardRequisicoes"]')) return;
-    
-    const tabsContainer = document.querySelector('.tabs');
-    if (!tabsContainer) return;
-    
-    // Adiciona nova aba
-    const novaAba = document.createElement('div');
-    novaAba.className = 'tab';
-    novaAba.setAttribute('onclick', "mostrarAba('dashboardRequisicoes')");
-    novaAba.innerHTML = '<i>📊</i> Dash Requisições';
-    
-    // Insere após Dashboard
-    const dashboardTab = document.querySelector('.tab[onclick*="dashboard"]');
-    if (dashboardTab) {
-        dashboardTab.insertAdjacentElement('afterend', novaAba);
-    } else {
-        tabsContainer.appendChild(novaAba);
-    }
+    document.querySelector('.tab[onclick*="dashboardRequisicoes"]')?.remove();
+    if (document.getElementById('dashboardRequisicoes')) return;
+    const painelContainer = document.querySelector('#app-container .container');
+    if (!painelContainer) return;
     
     // Cria conteúdo da aba
     const tabContent = document.createElement('div');
@@ -6735,7 +6721,7 @@ function adicionarAbaDashboardRequisicoes() {
         </div>
     `;
     
-    document.getElementById('app-container').querySelector('.container').appendChild(tabContent);
+    painelContainer.appendChild(tabContent);
 }
 
 // Atualiza dashboard de requisições
@@ -7762,10 +7748,10 @@ function mostrarDashboardUnificado() {
 // 5. Atalhos de teclado
 function configurarAtalhosTeclado() {
     document.addEventListener('keydown', function(e) {
-        // Ctrl + D = Dashboard
+        // Ctrl + D = Visão Geral
         if (e.ctrlKey && e.key === 'd') {
             e.preventDefault();
-            mostrarAba('dashboard');
+            mostrarAba('unificado');
         }
         // Ctrl + R = Requisições
         if (e.ctrlKey && e.key === 'r') {
@@ -16423,6 +16409,487 @@ function iniciar365(){
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',iniciar365);else iniciar365();
 setTimeout(iniciar365,1000);
 console.log('✅ v36.5 — filtro Dispensa/Inexigibilidade, paginação e callback Supabase ativos');
+})();
+</script>
+
+<!-- ============================================================ -->
+<!-- PATCH v37 - DASHBOARD UNIFICADO + RELATORIOS INSTITUCIONAIS -->
+<!-- ============================================================ -->
+<style>
+#unificado{--du-primary:#1d4ed8;--du-navy:#0f2f57;--du-green:#0f9f77;--du-orange:#e67e22;--du-purple:#7c3aed}
+#unificado .du37-shell{display:grid;gap:1.15rem}
+#unificado .du37-hero{position:relative;overflow:hidden;display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;padding:1.4rem 1.5rem;border-radius:18px;color:#fff;background:linear-gradient(125deg,#0f2f57 0%,#174f8e 58%,#1d6fb5 100%);box-shadow:0 16px 34px rgba(15,47,87,.2)}
+#unificado .du37-hero::after{content:'';position:absolute;right:-70px;top:-95px;width:250px;height:250px;border-radius:50%;background:rgba(255,255,255,.1)}
+#unificado .du37-hero h2{position:relative;z-index:1;margin:0 0 .35rem;font-size:1.5rem}
+#unificado .du37-hero p{position:relative;z-index:1;margin:0;max-width:700px;color:rgba(255,255,255,.84);font-size:.88rem;line-height:1.5}
+#unificado .du37-actions{position:relative;z-index:1;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.55rem}
+#unificado .du37-action{border:1px solid rgba(255,255,255,.42);background:rgba(255,255,255,.12);color:#fff;border-radius:10px;padding:.62rem .85rem;font-weight:750;cursor:pointer;transition:.2s ease;white-space:nowrap}
+#unificado .du37-action:hover{background:#fff;color:#174f8e;transform:translateY(-1px)}
+#unificado .du37-filters{display:grid;grid-template-columns:repeat(5,minmax(145px,1fr)) auto;gap:.75rem;align-items:end;padding:1rem 1.1rem;border:1px solid var(--border);border-radius:16px;background:var(--surface);box-shadow:0 8px 24px rgba(15,23,42,.06)}
+#unificado .du37-field label{display:block;margin-bottom:.35rem;color:var(--text-light);font-size:.73rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+#unificado .du37-field select{width:100%;min-height:40px;border:1px solid var(--border);border-radius:10px;background:var(--background);color:var(--text);padding:.55rem .7rem}
+#unificado .du37-reset{min-height:40px;border:1px solid var(--border);border-radius:10px;background:transparent;color:var(--text);padding:.55rem .8rem;font-weight:700;cursor:pointer}
+#unificado .du37-reset:hover{border-color:var(--du-primary);color:var(--du-primary)}
+#unificado .du37-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.85rem}
+#unificado .du37-kpi{position:relative;overflow:hidden;min-height:112px;padding:1rem 1.05rem;border:1px solid var(--border);border-radius:16px;background:var(--surface);box-shadow:0 8px 25px rgba(15,23,42,.055)}
+#unificado .du37-kpi::before{content:'';position:absolute;inset:0 auto 0 0;width:4px;background:var(--du-primary)}
+#unificado .du37-kpi.ativo::before{background:var(--du-orange)}
+#unificado .du37-kpi.concluido::before{background:var(--du-green)}
+#unificado .du37-kpi.excecao::before{background:var(--du-purple)}
+#unificado .du37-kpi-top{display:flex;align-items:center;justify-content:space-between;color:var(--text-light);font-size:.76rem;font-weight:800;text-transform:uppercase;letter-spacing:.035em}
+#unificado .du37-kpi-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--primary-light);font-size:1rem}
+#unificado .du37-kpi-value{margin:.55rem 0 .12rem;color:var(--text);font-size:1.8rem;font-weight:850;line-height:1}
+#unificado .du37-kpi-note{color:var(--text-light);font-size:.76rem}
+#unificado .du37-source-grid,#unificado .du37-finance-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:.8rem}
+#unificado .du37-source-card,#unificado .du37-finance-card{padding:1rem 1.05rem;border:1px solid var(--border);border-radius:14px;background:var(--surface)}
+#unificado .du37-source-card{display:flex;align-items:center;justify-content:space-between;gap:.7rem}
+#unificado .du37-source-name,#unificado .du37-finance-name{color:var(--text-light);font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.035em}
+#unificado .du37-source-value{color:var(--text);font-size:1.45rem;font-weight:850}
+#unificado .du37-finance-value{margin:.42rem 0 .2rem;color:var(--du-primary);font-size:1.32rem;font-weight:850}
+#unificado .du37-finance-note{color:var(--text-light);font-size:.74rem;line-height:1.4}
+#unificado .du37-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;margin:.1rem 0 -.2rem}
+#unificado .du37-section-head h3{margin:0;color:var(--text);font-size:1rem}
+#unificado .du37-section-head span{color:var(--text-light);font-size:.76rem}
+#unificado .du37-charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+#unificado .du37-chart-card{min-width:0;border:1px solid var(--border);border-radius:16px;background:var(--surface);box-shadow:0 8px 24px rgba(15,23,42,.055);padding:1rem}
+#unificado .du37-chart-card.wide{grid-column:1/-1}
+#unificado .du37-chart-title{display:flex;align-items:center;justify-content:space-between;gap:.75rem;margin-bottom:.75rem}
+#unificado .du37-chart-title h3{margin:0;color:var(--text);font-size:.94rem}
+#unificado .du37-chart-title span{color:var(--text-light);font-size:.72rem}
+#unificado .du37-chart-body{position:relative;height:290px}
+#unificado .du37-chart-card.wide .du37-chart-body{height:305px}
+#unificado .du37-chart-empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--text-light);font-size:.85rem;text-align:center;padding:1rem}
+#unificado .du37-chart-empty[hidden]{display:none}
+#unificado .du37-quality{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.65rem;padding:.9rem 1rem;border:1px solid var(--border);border-radius:14px;background:var(--surface)}
+#unificado .du37-quality-item strong{display:block;color:var(--text);font-size:1.05rem}
+#unificado .du37-quality-item span{color:var(--text-light);font-size:.73rem}
+#unificado .du37-table-card{border:1px solid var(--border);border-radius:16px;background:var(--surface);box-shadow:0 8px 24px rgba(15,23,42,.055);overflow:hidden}
+#unificado .du37-table-card .du37-table-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 1.1rem;border-bottom:1px solid var(--border)}
+#unificado .du37-table-card h3{margin:0;font-size:.98rem}
+#unificado .du37-table-wrap{overflow:auto}
+#unificado .du37-table{width:100%;border-collapse:collapse;min-width:790px}
+#unificado .du37-table th{background:var(--background);color:var(--text-light);font-size:.72rem;text-transform:uppercase;letter-spacing:.035em;text-align:left;padding:.72rem .8rem;white-space:nowrap}
+#unificado .du37-table td{border-top:1px solid var(--border);color:var(--text);font-size:.8rem;padding:.72rem .8rem;vertical-align:middle}
+#unificado .du37-table tbody tr:hover{background:var(--primary-light)}
+#unificado .du37-badge{display:inline-flex;align-items:center;padding:.22rem .52rem;border-radius:999px;font-size:.68rem;font-weight:800;white-space:nowrap}
+#unificado .du37-badge.licitacao{background:#dbeafe;color:#1d4ed8}
+#unificado .du37-badge.requisicao{background:#dcfce7;color:#047857}
+#unificado .du37-badge.direta{background:#f3e8ff;color:#7e22ce}
+#unificado .du37-alert{font-weight:800;color:#b45309}
+#unificado .du37-alert.overdue{color:#b91c1c}
+#unificado .du37-empty-row{text-align:center!important;color:var(--text-light)!important;padding:2rem!important}
+#unificado .du37-footnote{color:var(--text-light);font-size:.72rem;line-height:1.5}
+.mogi-v363-brand img.du37-brasao,#brasao-header.du37-brasao{width:54px!important;height:44px!important;object-fit:contain!important;background:#eee;border-radius:9px;padding:2px;box-sizing:border-box;filter:drop-shadow(0 2px 5px rgba(0,0,0,.24))}
+@media(max-width:1100px){#unificado .du37-filters{grid-template-columns:repeat(3,minmax(150px,1fr))}#unificado .du37-kpis,#unificado .du37-quality{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){#unificado .du37-hero{flex-direction:column}#unificado .du37-actions{justify-content:flex-start}#unificado .du37-filters,#unificado .du37-kpis,#unificado .du37-quality,#unificado .du37-charts{grid-template-columns:1fr}#unificado .du37-chart-card.wide{grid-column:auto}#unificado .du37-chart-body,#unificado .du37-chart-card.wide .du37-chart-body{height:260px}}
+@media print{#unificado .du37-filters,#unificado .du37-actions{display:none!important}#unificado .du37-hero{background:#0f2f57!important;print-color-adjust:exact}}
+</style>
+
+<script>
+(function(){
+'use strict';
+if(window.__DASHBOARD_UNIFICADO_V37__) return;
+window.__DASHBOARD_UNIFICADO_V37__=true;
+
+const URL_BRASAO_V37=new URL('./assets/branding/mogi-brasao.jpg',document.baseURI).href;
+const COR_FONTE_V37={licitacao:'#2563eb',requisicao:'#0f9f77',direta:'#7c3aed'};
+const ROTULO_FONTE_V37={licitacao:'Licita\u00e7\u00f5es',requisicao:'Requisi\u00e7\u00f5es',direta:'Contrata\u00e7\u00f5es diretas'};
+const MESES_V37=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const PainelUnificadoV37={
+  filtros:{ano:'todos',fonte:'todos',status:'todos',subtipo:'todos',judicial:'todos'},
+  charts:new Map(),snapshot:null,brasaoPromise:null
+};
+
+function normalizarDashboardUnificado(valor){
+  return String(valor??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+}
+
+function numeroDashboardUnificado(valor){
+  if(typeof valor==='number') return Number.isFinite(valor)?valor:0;
+  let texto=String(valor??'').replace(/\s|R\$/gi,'').replace(/[^0-9,.-]/g,'');
+  if(!texto) return 0;
+  const virgula=texto.lastIndexOf(','),ponto=texto.lastIndexOf('.');
+  if(virgula>=0&&ponto>=0) texto=virgula>ponto?texto.replace(/\./g,'').replace(',','.'):texto.replace(/,/g,'');
+  else if(virgula>=0) texto=texto.replace(/\./g,'').replace(',','.');
+  const numero=Number(texto);
+  return Number.isFinite(numero)?numero:0;
+}
+
+function dataLocalDashboardUnificado(valor){
+  if(valor instanceof Date){
+    const copia=new Date(valor.getFullYear(),valor.getMonth(),valor.getDate());
+    return Number.isNaN(copia.getTime())?null:copia;
+  }
+  const texto=String(valor??'').trim();
+  if(!texto) return null;
+  let partes=texto.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|[T\s])/),ano,mes,dia;
+  if(partes){ano=Number(partes[1]);mes=Number(partes[2]);dia=Number(partes[3]);}
+  else{
+    partes=texto.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if(!partes) return null;
+    dia=Number(partes[1]);mes=Number(partes[2]);ano=Number(partes[3]);
+  }
+  if(ano<2000||ano>2100||mes<1||mes>12||dia<1||dia>31) return null;
+  const data=new Date(ano,mes-1,dia);
+  return data.getFullYear()===ano&&data.getMonth()===mes-1&&data.getDate()===dia?data:null;
+}
+
+function classeStatusDashboardUnificado(status){
+  const valor=normalizarDashboardUnificado(status);
+  if(!valor) return 'nao_classificado';
+  if(valor.includes('conclu')) return 'concluido';
+  if(['cancel','reprov','desert','fracass','revog','anulad','suspens'].some(chave=>valor.includes(chave))) return 'excecao';
+  return 'ativo';
+}
+
+function tipoDiretaDashboardUnificado(item){
+  try{if(typeof window!=='undefined'&&typeof window.tipoContratacaoV365==='function')return window.tipoContratacaoV365(item)==='inexigibilidade'?'Inexigibilidade':'Dispensa';}catch(_){ }
+  const cc=item?.consultaCompras||{};
+  const fontes=[item?.tipoContratacao,item?.modalidadeContratacao,item?.modalidade,cc.tipo_contratacao,cc.tipoContratacao,cc.modalidade,cc.modalidade_contratacao].map(normalizarDashboardUnificado);
+  return fontes.some(valor=>valor.includes('inexig'))?'Inexigibilidade':'Dispensa';
+}
+
+function chaveRegistroDashboardUnificado(fonte,item,indice){
+  if(fonte==='licitacao') return `licitacao:${item?.id??item?.numeroLicitacao??indice}`;
+  if(fonte==='requisicao') return `requisicao:${item?.id??`${item?.tipo||''}:${item?.numero||indice}`}`;
+  const cc=item?.consultaCompras||{},consultaId=cc.consulta_id??item?.consulta_id,consultaTipo=cc.consulta_tipo??item?.consulta_tipo;
+  if(consultaId!==undefined&&consultaId!==null) return `direta:${consultaTipo??''}:${consultaId}`;
+  return `direta:${item?.id??item?.numero??indice}`;
+}
+
+function criarRegistroDashboardUnificado(fonte,item,indice){
+  const configuracao=fonte==='licitacao'?{
+    numero:item?.numeroLicitacao,objeto:item?.objeto,status:item?.situacao,subtipo:item?.modalidade||'Sem modalidade',entrada:item?.dataAbertura||item?.dataCriacao,prazo:item?.dataConclusao,valor:item?.valor,valorFinal:item?.valorFinal
+  }:fonte==='requisicao'?{
+    numero:item?.numero,objeto:item?.objeto,status:item?.status,subtipo:item?.tipo||'Sem tipo',entrada:item?.dataCriacao||item?.dataLimite,prazo:item?.dataLimite,valor:item?.valor
+  }:{
+    numero:item?.numero,objeto:item?.objeto,status:item?.status,subtipo:tipoDiretaDashboardUnificado(item),entrada:item?.data||item?.dataCriacao||item?.consultaCompras?.sincronizado_em,prazo:null,valor:item?.valor
+  };
+  const data=dataLocalDashboardUnificado(configuracao.entrada),prazo=dataLocalDashboardUnificado(configuracao.prazo);
+  const subtipo=String(configuracao.subtipo||'N\u00e3o informado').trim()||'N\u00e3o informado',valorFinal=numeroDashboardUnificado(configuracao.valorFinal);
+  return {
+    chave:chaveRegistroDashboardUnificado(fonte,item,indice),fonte,fonteLabel:ROTULO_FONTE_V37[fonte],original:item,
+    numero:String(configuracao.numero||'N/I'),objeto:String(configuracao.objeto||'Sem objeto informado'),statusOriginal:String(configuracao.status||'N\u00e3o informado'),statusClasse:classeStatusDashboardUnificado(configuracao.status),
+    subtipo,subtipoChave:`${fonte}::${normalizarDashboardUnificado(subtipo)}`,data,prazo,ano:data?data.getFullYear():null,mes:data?data.getMonth():null,
+    valor:numeroDashboardUnificado(configuracao.valor),valorFinal,temValorFinal:valorFinal>0,judicial:fonte==='direta'&&item?.ordemJudicial===true,
+    urgente:fonte==='requisicao'&&(item?.emergencial===true||['urgente','alta'].includes(normalizarDashboardUnificado(item?.prioridade)))
+  };
+}
+
+function construirRegistrosDashboardUnificado(dados){
+  const saida=[];
+  [['licitacao',dados?.licitacoes||[]],['requisicao',dados?.requisicoes||[]],['direta',dados?.diretas||[]]].forEach(([fonte,itens])=>{
+    const chaves=new Set();
+    (Array.isArray(itens)?itens:[]).forEach((item,indice)=>{const registro=criarRegistroDashboardUnificado(fonte,item,indice);if(!chaves.has(registro.chave)){chaves.add(registro.chave);saida.push(registro);}});
+  });
+  return saida;
+}
+
+function filtrarRegistrosDashboardUnificado(registros,filtros){
+  const f={ano:'todos',fonte:'todos',status:'todos',subtipo:'todos',judicial:'todos',...(filtros||{})};
+  return registros.filter(registro=>{
+    if(f.ano!=='todos'&&registro.ano!==Number(f.ano)) return false;
+    if(f.fonte!=='todos'&&registro.fonte!==f.fonte) return false;
+    if(f.status!=='todos'&&registro.statusClasse!==f.status) return false;
+    if(f.subtipo!=='todos'&&registro.subtipoChave!==f.subtipo) return false;
+    if(f.judicial!=='todos'&&(registro.fonte!=='direta'||registro.judicial!==(f.judicial==='sim'))) return false;
+    return true;
+  });
+}
+
+function criarSnapshotDashboardUnificado(dados,filtros){
+  const todos=construirRegistrosDashboardUnificado(dados),registros=filtrarRegistrosDashboardUnificado(todos,filtros);
+  const porFonte={licitacao:0,requisicao:0,direta:0},porStatus={ativo:0,concluido:0,excecao:0,nao_classificado:0};
+  registros.forEach(registro=>{porFonte[registro.fonte]+=1;porStatus[registro.statusClasse]+=1;});
+  const licitacoes=registros.filter(r=>r.fonte==='licitacao'),requisicoes=registros.filter(r=>r.fonte==='requisicao'),diretas=registros.filter(r=>r.fonte==='direta');
+  const vinculadas=new Set();(dados?.licitacoes||[]).forEach(lic=>(lic?.requisicoesOrigem||[]).forEach(id=>vinculadas.add(String(id))));
+  return {filtros:{ano:'todos',fonte:'todos',status:'todos',subtipo:'todos',judicial:'todos',...(filtros||{})},todos,registros,porFonte,porStatus,
+    financeiro:{
+      licitacaoEstimado:licitacoes.reduce((s,r)=>s+r.valor,0),licitacaoFinal:licitacoes.reduce((s,r)=>s+(r.temValorFinal?r.valorFinal:0),0),licitacaoFinalInformado:licitacoes.filter(r=>r.temValorFinal).length,
+      requisicao:requisicoes.reduce((s,r)=>s+r.valor,0),requisicaoInformado:requisicoes.filter(r=>r.valor>0).length,direta:diretas.reduce((s,r)=>s+r.valor,0),
+      diretaJudicial:diretas.filter(r=>r.judicial).reduce((s,r)=>s+r.valor,0),diretaNaoJudicial:diretas.filter(r=>!r.judicial).reduce((s,r)=>s+r.valor,0)
+    },
+    qualidade:{semData:registros.filter(r=>!r.data).length,naoClassificados:porStatus.nao_classificado,requisicoesVinculadas:requisicoes.filter(r=>vinculadas.has(String(r.original?.id))).length,diretasSemNatureza:diretas.filter(r=>!r.original?.natureza||normalizarDashboardUnificado(r.original?.natureza).includes('a classificar')).length}
+  };
+}
+
+function lerDadosDashboardUnificado(){
+  const app=typeof AppState!=='undefined'?AppState:{};
+  const diretas=Array.isArray(window.EstadoDispensas?.dispensas)?window.EstadoDispensas.dispensas:(Array.isArray(app.dispensas)?app.dispensas:[]);
+  return {licitacoes:Array.isArray(app.licitacoes)?app.licitacoes:[],requisicoes:Array.isArray(app.requisicoes)?app.requisicoes:[],diretas};
+}
+
+function escaparDashboardUnificado(valor){return String(valor??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
+function moedaDashboardUnificado(valor){return Number(valor||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});}
+function formatarDataDashboardUnificado(data){return data instanceof Date&&!Number.isNaN(data.getTime())?data.toLocaleDateString('pt-BR'):'\u2014';}
+function carregarFiltrosDashboardUnificado(){try{PainelUnificadoV37.filtros={...PainelUnificadoV37.filtros,...JSON.parse(localStorage.getItem('dashboard_unificado_filtros_v37')||'{}')};}catch(_){ }}
+function salvarFiltrosDashboardUnificado(){try{localStorage.setItem('dashboard_unificado_filtros_v37',JSON.stringify(PainelUnificadoV37.filtros));}catch(_){ }}
+
+function htmlPainelDashboardUnificado(){
+  return `<div class="du37-shell">
+    <section class="du37-hero"><div><h2>Vis\u00e3o Geral de Licita\u00e7\u00f5es e Compras</h2><p>Indicadores integrados de licita\u00e7\u00f5es, requisi\u00e7\u00f5es e contrata\u00e7\u00f5es diretas. Os valores permanecem separados por m\u00f3dulo para evitar dupla contagem.</p></div><div class="du37-actions"><button class="du37-action" type="button" onclick="exportarRelatorioUnificadoPDF()">PDF com bras\u00e3o</button><button class="du37-action" type="button" onclick="exportarRelatorioUnificadoXLSX()">Excel detalhado</button></div></section>
+    <section class="du37-filters" aria-label="Filtros da vis\u00e3o geral">
+      <div class="du37-field"><label for="unificado-filtro-ano">Ano de entrada</label><select id="unificado-filtro-ano" onchange="alterarFiltroDashboardUnificado('ano',this.value)"></select></div>
+      <div class="du37-field"><label for="unificado-filtro-fonte">Fonte</label><select id="unificado-filtro-fonte" onchange="alterarFiltroDashboardUnificado('fonte',this.value)"><option value="todos">Todas as fontes</option><option value="licitacao">Licita\u00e7\u00f5es</option><option value="requisicao">Requisi\u00e7\u00f5es</option><option value="direta">Contrata\u00e7\u00f5es diretas</option></select></div>
+      <div class="du37-field"><label for="unificado-filtro-status">Situa\u00e7\u00e3o consolidada</label><select id="unificado-filtro-status" onchange="alterarFiltroDashboardUnificado('status',this.value)"><option value="todos">Todas</option><option value="ativo">Ativos</option><option value="concluido">Conclu\u00eddos</option><option value="excecao">Exce\u00e7\u00f5es</option><option value="nao_classificado">N\u00e3o classificados</option></select></div>
+      <div class="du37-field"><label for="unificado-filtro-subtipo">Tipo / modalidade</label><select id="unificado-filtro-subtipo" onchange="alterarFiltroDashboardUnificado('subtipo',this.value)"><option value="todos">Todos</option></select></div>
+      <div class="du37-field"><label for="unificado-filtro-judicial">Judicial (diretas)</label><select id="unificado-filtro-judicial" onchange="alterarFiltroDashboardUnificado('judicial',this.value)"><option value="todos">Todos</option><option value="sim">Judicial</option><option value="nao">N\u00e3o judicial</option></select></div>
+      <button class="du37-reset" type="button" onclick="limparFiltrosDashboardUnificado()">Limpar</button>
+    </section>
+    <section class="du37-kpis" id="du37-kpis" aria-live="polite"></section><section class="du37-source-grid" id="du37-source-grid"></section>
+    <div class="du37-section-head"><h3>Valores informados por m\u00f3dulo</h3><span>N\u00e3o representam um total financeiro som\u00e1vel</span></div><section class="du37-finance-grid" id="du37-finance-grid"></section>
+    <section class="du37-charts">
+      <article class="du37-chart-card"><div class="du37-chart-title"><h3>Situa\u00e7\u00e3o por fonte</h3><span>Barras empilhadas</span></div><div class="du37-chart-body"><canvas id="unificado-status-chart" role="img" aria-label="Situa\u00e7\u00e3o consolidada por fonte"></canvas><div class="du37-chart-empty" hidden></div></div></article>
+      <article class="du37-chart-card"><div class="du37-chart-title"><h3>Composi\u00e7\u00e3o dos registros</h3><span>Tipos e modalidades</span></div><div class="du37-chart-body"><canvas id="unificado-tipos-chart" role="img" aria-label="Composi\u00e7\u00e3o por tipo ou modalidade"></canvas><div class="du37-chart-empty" hidden></div></div></article>
+      <article class="du37-chart-card wide"><div class="du37-chart-title"><h3>Entradas por m\u00eas</h3><span id="du37-mensal-nota">Data de entrada no sistema</span></div><div class="du37-chart-body"><canvas id="unificado-mensal-chart" role="img" aria-label="Entradas mensais por fonte"></canvas><div class="du37-chart-empty" hidden></div></div></article>
+    </section>
+    <section class="du37-quality" id="du37-quality"></section>
+    <section class="du37-table-card"><div class="du37-table-head"><h3>Pend\u00eancias que merecem aten\u00e7\u00e3o</h3><span id="du37-table-note" class="du37-footnote"></span></div><div class="du37-table-wrap"><table class="du37-table"><thead><tr><th>Fonte</th><th>N\u00famero</th><th>Objeto</th><th>Status</th><th>Prazo</th><th>Alerta</th></tr></thead><tbody id="du37-attention-body"></tbody></table></div></section>
+    <p class="du37-footnote" id="du37-updated"></p>
+  </div>`;
+}
+
+function garantirAbaDashboardUnificado(){
+  const tabs=document.querySelector('.tabs'),container=document.querySelector('#app-container .container');if(!tabs||!container)return false;
+  if(!document.getElementById('tab-unificado')){const tab=document.createElement('div');tab.id='tab-unificado';tab.className='tab';tab.setAttribute('onclick',"mostrarAba('unificado')");tab.innerHTML='<i>\ud83d\udcca</i> Vis\u00e3o Geral';const dashboard=tabs.querySelector(`.tab[onclick="mostrarAba('dashboard')"]`);dashboard?tabs.insertBefore(tab,dashboard):tabs.insertBefore(tab,tabs.firstChild);}
+  if(!document.getElementById('unificado')){const painel=document.createElement('div');painel.id='unificado';painel.className='tab-content';painel.innerHTML=htmlPainelDashboardUnificado();const config=document.getElementById('configuracoes');config?container.insertBefore(painel,config):container.appendChild(painel);}
+  return true;
+}
+
+function sincronizarControlesDashboardUnificado(todos){
+  const anos=[...new Set(todos.map(r=>r.ano).filter(Boolean))].sort((a,b)=>b-a),ano=document.getElementById('unificado-filtro-ano');
+  if(ano){ano.innerHTML='<option value="todos">Todos os anos</option>'+anos.map(v=>`<option value="${v}">${v}</option>`).join('');if(PainelUnificadoV37.filtros.ano!=='todos'&&!anos.includes(Number(PainelUnificadoV37.filtros.ano)))PainelUnificadoV37.filtros.ano='todos';ano.value=PainelUnificadoV37.filtros.ano;}
+  const fonte=document.getElementById('unificado-filtro-fonte');if(fonte)fonte.value=PainelUnificadoV37.filtros.fonte;const status=document.getElementById('unificado-filtro-status');if(status)status.value=PainelUnificadoV37.filtros.status;
+  const base=todos.filter(r=>(PainelUnificadoV37.filtros.ano==='todos'||r.ano===Number(PainelUnificadoV37.filtros.ano))&&(PainelUnificadoV37.filtros.fonte==='todos'||r.fonte===PainelUnificadoV37.filtros.fonte));
+  const opcoes=[...new Map(base.map(r=>[r.subtipoChave,r])).values()].sort((a,b)=>a.subtipo.localeCompare(b.subtipo,'pt-BR')),subtipo=document.getElementById('unificado-filtro-subtipo');
+  if(subtipo){subtipo.innerHTML='<option value="todos">Todos</option>'+opcoes.map(r=>`<option value="${escaparDashboardUnificado(r.subtipoChave)}">${PainelUnificadoV37.filtros.fonte==='todos'?`${escaparDashboardUnificado(r.fonteLabel)}: `:''}${escaparDashboardUnificado(r.subtipo)}</option>`).join('');if(PainelUnificadoV37.filtros.subtipo!=='todos'&&!opcoes.some(r=>r.subtipoChave===PainelUnificadoV37.filtros.subtipo))PainelUnificadoV37.filtros.subtipo='todos';subtipo.value=PainelUnificadoV37.filtros.subtipo;}
+  const judicial=document.getElementById('unificado-filtro-judicial');if(judicial){judicial.disabled=PainelUnificadoV37.filtros.fonte!=='direta';if(judicial.disabled)PainelUnificadoV37.filtros.judicial='todos';judicial.value=PainelUnificadoV37.filtros.judicial;judicial.title=judicial.disabled?'Selecione Contrata\u00e7\u00f5es diretas para usar este filtro':'';}
+}
+
+function renderizarIndicadoresDashboardUnificado(snapshot){
+  const kpis=document.getElementById('du37-kpis');if(kpis)kpis.innerHTML=[['registros','Registros',snapshot.registros.length,'Itens do recorte atual','\ud83d\uddc2\ufe0f'],['ativo','Ativos',snapshot.porStatus.ativo,'Em tramita\u00e7\u00e3o','\u23f3'],['concluido','Conclu\u00eddos',snapshot.porStatus.concluido,'Finalizados','\u2713'],['excecao','Exce\u00e7\u00f5es',snapshot.porStatus.excecao+snapshot.porStatus.nao_classificado,`${snapshot.porStatus.nao_classificado} n\u00e3o classificado(s)`,'!']].map(([classe,titulo,valor,nota,icone])=>`<article class="du37-kpi ${classe}"><div class="du37-kpi-top"><span>${titulo}</span><span class="du37-kpi-icon">${icone}</span></div><div class="du37-kpi-value">${valor}</div><div class="du37-kpi-note">${nota}</div></article>`).join('');
+  const fontes=document.getElementById('du37-source-grid');if(fontes)fontes.innerHTML=['licitacao','requisicao','direta'].map(fonte=>`<article class="du37-source-card"><div><div class="du37-source-name">${ROTULO_FONTE_V37[fonte]}</div><div class="du37-finance-note">Registros no filtro</div></div><div class="du37-source-value" style="color:${COR_FONTE_V37[fonte]}">${snapshot.porFonte[fonte]}</div></article>`).join('');
+  const f=snapshot.financeiro,financeiro=document.getElementById('du37-finance-grid');if(financeiro){const cards=[];if(snapshot.porFonte.licitacao)cards.push(['Licita\u00e7\u00f5es \u2014 estimado',f.licitacaoEstimado,`${snapshot.porFonte.licitacao} registro(s)`],['Licita\u00e7\u00f5es \u2014 valor final',f.licitacaoFinal,`Informado em ${f.licitacaoFinalInformado} de ${snapshot.porFonte.licitacao}`]);if(snapshot.porFonte.requisicao)cards.push(['Requisi\u00e7\u00f5es \u2014 informado',f.requisicao,`${f.requisicaoInformado} de ${snapshot.porFonte.requisicao} com valor`]);if(snapshot.porFonte.direta)cards.push(['Contrata\u00e7\u00f5es diretas',f.direta,`N\u00e3o judicial: ${moedaDashboardUnificado(f.diretaNaoJudicial)} \u00b7 Judicial: ${moedaDashboardUnificado(f.diretaJudicial)}`]);financeiro.innerHTML=cards.length?cards.map(([nome,valor,nota])=>`<article class="du37-finance-card"><div class="du37-finance-name">${nome}</div><div class="du37-finance-value">${moedaDashboardUnificado(valor)}</div><div class="du37-finance-note">${nota}</div></article>`).join(''):'<div class="du37-finance-card"><div class="du37-finance-note">Nenhum valor dispon\u00edvel para o recorte atual.</div></div>';}
+  const qualidade=document.getElementById('du37-quality');if(qualidade)qualidade.innerHTML=[[snapshot.qualidade.requisicoesVinculadas,'Requisi\u00e7\u00f5es vinculadas'],[snapshot.financeiro.licitacaoFinalInformado,'Licita\u00e7\u00f5es com valor final'],[snapshot.qualidade.diretasSemNatureza,'Diretas a classificar'],[snapshot.qualidade.semData,'Registros sem data v\u00e1lida']].map(([valor,rotulo])=>`<div class="du37-quality-item"><strong>${valor}</strong><span>${rotulo}</span></div>`).join('');
+}
+
+function construtorChartDashboardUnificado(){if(typeof window.Chart!=='function')return null;const original=Object.getPrototypeOf(window.Chart);return typeof original==='function'&&typeof original.prototype?.destroy==='function'?original:window.Chart;}
+function criarChartDashboardUnificado(id,config,temDados){
+  const canvas=document.getElementById(id),vazio=canvas?.parentElement?.querySelector('.du37-chart-empty'),anterior=PainelUnificadoV37.charts.get(id);if(anterior){try{anterior.destroy();}catch(_){ }PainelUnificadoV37.charts.delete(id);}if(!canvas)return;
+  const ChartCtor=construtorChartDashboardUnificado();if(!ChartCtor||!temDados){canvas.hidden=true;if(vazio){vazio.hidden=false;vazio.textContent=ChartCtor?'Sem dados para os filtros selecionados.':'Os indicadores est\u00e3o dispon\u00edveis, mas a biblioteca de gr\u00e1ficos n\u00e3o foi carregada.';}return;}
+  canvas.hidden=false;if(vazio)vazio.hidden=true;const fundo={id:`fundo-${id}`,beforeDraw(chart){const ctx=chart.ctx;ctx.save();ctx.globalCompositeOperation='destination-over';ctx.fillStyle='#fff';ctx.fillRect(0,0,chart.width,chart.height);ctx.restore();}};
+  config.plugins=[...(config.plugins||[]),fundo];
+  try{const chart=new ChartCtor(canvas,config);PainelUnificadoV37.charts.set(id,chart);canvas.chart=chart;}catch(erro){console.warn('[Dashboard Unificado] Gr\u00e1fico:',erro);canvas.hidden=true;if(vazio){vazio.hidden=false;vazio.textContent='N\u00e3o foi poss\u00edvel renderizar este gr\u00e1fico.';}}
+}
+function opcoesChartDashboardUnificado(extra={}){const corTexto=document.body.classList.contains('dark-mode')?'#cbd5e1':'#475569';return {responsive:true,maintainAspectRatio:false,animation:{duration:450},plugins:{legend:{position:'bottom',labels:{color:corTexto,usePointStyle:true,boxWidth:9,padding:16}},tooltip:{backgroundColor:'#0f172a',padding:10,cornerRadius:8},datalabels:{display:false}},...extra};}
+
+function renderizarGraficosDashboardUnificado(snapshot){
+  const fontes=PainelUnificadoV37.filtros.fonte==='todos'?['licitacao','requisicao','direta']:[PainelUnificadoV37.filtros.fonte],statusDados=fontes.map(fonte=>snapshot.registros.filter(r=>r.fonte===fonte));
+  criarChartDashboardUnificado('unificado-status-chart',{type:'bar',data:{labels:fontes.map(f=>ROTULO_FONTE_V37[f]),datasets:[{label:'Ativos',data:statusDados.map(l=>l.filter(r=>r.statusClasse==='ativo').length),backgroundColor:'#f59e0b',borderRadius:7},{label:'Conclu\u00eddos',data:statusDados.map(l=>l.filter(r=>r.statusClasse==='concluido').length),backgroundColor:'#10b981',borderRadius:7},{label:'Exce\u00e7\u00f5es',data:statusDados.map(l=>l.filter(r=>r.statusClasse==='excecao').length),backgroundColor:'#ef4444',borderRadius:7},{label:'N\u00e3o classificados',data:statusDados.map(l=>l.filter(r=>r.statusClasse==='nao_classificado').length),backgroundColor:'#94a3b8',borderRadius:7}]},options:opcoesChartDashboardUnificado({scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,beginAtZero:true,ticks:{precision:0},grid:{color:'rgba(148,163,184,.18)'}}}})},snapshot.registros.length>0);
+  const contagem={};snapshot.registros.forEach(r=>{const chave=PainelUnificadoV37.filtros.fonte==='todos'?`${r.fonteLabel}: ${r.subtipo}`:r.subtipo;contagem[chave]=(contagem[chave]||0)+1;});const tipos=Object.entries(contagem).sort((a,b)=>b[1]-a[1]),principais=tipos.slice(0,7),restante=tipos.slice(7).reduce((s,i)=>s+i[1],0);if(restante)principais.push(['Outros',restante]);
+  criarChartDashboardUnificado('unificado-tipos-chart',{type:'doughnut',data:{labels:principais.map(i=>i[0]),datasets:[{data:principais.map(i=>i[1]),backgroundColor:['#2563eb','#10b981','#7c3aed','#f59e0b','#0ea5e9','#ec4899','#64748b','#cbd5e1'],borderColor:'#fff',borderWidth:3,hoverOffset:6}]},options:opcoesChartDashboardUnificado({cutout:'64%',plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:8,padding:12}},tooltip:{backgroundColor:'#0f172a',padding:10},datalabels:{display:false}}})},principais.length>0);
+  let chaves=[];if(PainelUnificadoV37.filtros.ano!=='todos')chaves=Array.from({length:12},(_,mes)=>`${PainelUnificadoV37.filtros.ano}-${String(mes+1).padStart(2,'0')}`);else chaves=[...new Set(snapshot.registros.filter(r=>r.data).map(r=>`${r.ano}-${String(r.mes+1).padStart(2,'0')}`))].sort();
+  const rotulos=chaves.map(chave=>{const[ano,mes]=chave.split('-').map(Number);return `${MESES_V37[mes-1]}/${String(ano).slice(-2)}`;}),series=fontes.map(fonte=>({label:ROTULO_FONTE_V37[fonte],data:chaves.map(chave=>snapshot.registros.filter(r=>r.fonte===fonte&&r.data&&`${r.ano}-${String(r.mes+1).padStart(2,'0')}`===chave).length),borderColor:COR_FONTE_V37[fonte],backgroundColor:`${COR_FONTE_V37[fonte]}24`,pointBackgroundColor:COR_FONTE_V37[fonte],pointRadius:3,pointHoverRadius:5,borderWidth:2.5,tension:.34,fill:true}));
+  criarChartDashboardUnificado('unificado-mensal-chart',{type:'line',data:{labels:rotulos,datasets:series},options:opcoesChartDashboardUnificado({interaction:{mode:'index',intersect:false},scales:{x:{grid:{display:false}},y:{beginAtZero:true,ticks:{precision:0},grid:{color:'rgba(148,163,184,.18)'}}}})},chaves.length>0);const nota=document.getElementById('du37-mensal-nota');if(nota)nota.textContent=PainelUnificadoV37.filtros.ano==='todos'?'Data de entrada no sistema':'12 meses do ano selecionado';
+}
+
+function renderizarPendenciasDashboardUnificado(snapshot){
+  const hoje=new Date();hoje.setHours(0,0,0,0);const itens=snapshot.registros.filter(r=>r.statusClasse==='ativo'&&(r.prazo||r.urgente)).map(r=>{const dias=r.prazo?Math.ceil((r.prazo-hoje)/86400000):null,peso=dias===null?(r.urgente?500:-1):(dias<0?10000+Math.abs(dias):Math.max(0,500-dias));return{...r,dias,peso};}).sort((a,b)=>b.peso-a.peso).slice(0,10),body=document.getElementById('du37-attention-body');
+  if(body)body.innerHTML=itens.length?itens.map(r=>{const alerta=r.dias===null?'Prioridade alta':r.dias<0?`Vencido h\u00e1 ${Math.abs(r.dias)} dia(s)`:r.dias===0?'Vence hoje':`${r.dias} dia(s)`;return `<tr><td><span class="du37-badge ${r.fonte}">${escaparDashboardUnificado(r.fonteLabel)}</span></td><td><strong>${escaparDashboardUnificado(r.numero)}</strong></td><td title="${escaparDashboardUnificado(r.objeto)}">${escaparDashboardUnificado(r.objeto.slice(0,70))}${r.objeto.length>70?'\u2026':''}</td><td>${escaparDashboardUnificado(r.statusOriginal)}</td><td>${formatarDataDashboardUnificado(r.prazo)}</td><td class="du37-alert ${r.dias!==null&&r.dias<0?'overdue':''}">${alerta}</td></tr>`;}).join(''):'<tr><td colspan="6" class="du37-empty-row">Nenhuma pend\u00eancia priorit\u00e1ria neste recorte.</td></tr>';
+  const nota=document.getElementById('du37-table-note');if(nota)nota.textContent=itens.length?`Exibindo at\u00e9 10 prioridades (${itens.length})`:'';
+}
+
+function renderizarDashboardUnificado(){
+  if(!garantirAbaDashboardUnificado())return;const dados=lerDadosDashboardUnificado(),todos=construirRegistrosDashboardUnificado(dados);sincronizarControlesDashboardUnificado(todos);const snapshot=criarSnapshotDashboardUnificado(dados,PainelUnificadoV37.filtros);PainelUnificadoV37.snapshot=snapshot;salvarFiltrosDashboardUnificado();renderizarIndicadoresDashboardUnificado(snapshot);renderizarGraficosDashboardUnificado(snapshot);renderizarPendenciasDashboardUnificado(snapshot);const atualizado=document.getElementById('du37-updated');if(atualizado)atualizado.textContent=`Atualizado em ${new Date().toLocaleString('pt-BR')} \u00b7 ${snapshot.registros.length} registro(s) no recorte. Ano considera a data de entrada de cada m\u00f3dulo.`;
+}
+function alterarFiltroDashboardUnificado(campo,valor){if(!Object.prototype.hasOwnProperty.call(PainelUnificadoV37.filtros,campo))return;PainelUnificadoV37.filtros[campo]=valor||'todos';if(campo==='fonte'){PainelUnificadoV37.filtros.subtipo='todos';PainelUnificadoV37.filtros.judicial='todos';}if(campo==='ano')PainelUnificadoV37.filtros.subtipo='todos';renderizarDashboardUnificado();}
+function limparFiltrosDashboardUnificado(){PainelUnificadoV37.filtros={ano:'todos',fonte:'todos',status:'todos',subtipo:'todos',judicial:'todos'};renderizarDashboardUnificado();try{window.mostrarNotificacao?.('Filtros da Vis\u00e3o Geral removidos.','success');}catch(_){ }}
+function abrirDashboardUnificadoV37(){garantirAbaDashboardUnificado();if(typeof window.mostrarAba==='function')window.mostrarAba('unificado');else{document.querySelectorAll('.tab-content').forEach(el=>el.classList.remove('active'));document.getElementById('unificado')?.classList.add('active');renderizarDashboardUnificado();}}
+
+function recortarBrasaoDashboardUnificado(imagem){
+  try{
+    const canvas=document.createElement('canvas');canvas.width=296;canvas.height=240;
+    const contexto=canvas.getContext('2d');if(!contexto)return URL_BRASAO_V37;
+    contexto.drawImage(imagem,140,75,296,240,0,0,296,240);
+    return canvas.toDataURL('image/png');
+  }catch(_){return URL_BRASAO_V37;}
+}
+
+function carregarBrasaoInstitucionalV37(){
+  const personalizado=(()=>{try{return localStorage.getItem('brasao_base64');}catch(_){return null;}})();
+  if(personalizado&&personalizado.length>100)return Promise.resolve(personalizado);
+  if(PainelUnificadoV37.brasaoPromise)return PainelUnificadoV37.brasaoPromise;
+  PainelUnificadoV37.brasaoPromise=new Promise(resolve=>{
+    const imagem=new Image();imagem.onload=()=>resolve(recortarBrasaoDashboardUnificado(imagem));imagem.onerror=()=>resolve(URL_BRASAO_V37);imagem.src=URL_BRASAO_V37;
+  }).then(logo=>{window._brasaoBase64Cache=logo;try{if(typeof BRASAO_CONFIG!=='undefined'){BRASAO_CONFIG.url=URL_BRASAO_V37;BRASAO_CONFIG._cache=logo;}}catch(_){ }return logo;});
+  return PainelUnificadoV37.brasaoPromise;
+}
+
+async function aplicarBrasaoInstitucionalV37(){
+  const logo=await carregarBrasaoInstitucionalV37();
+  document.querySelectorAll('#brasao-header,.mogi-v363-brand img,#logo-prefeitura img').forEach(img=>{img.src=logo;img.classList.add('du37-brasao');img.style.display='';});
+  try{if(typeof CONFIG_LOGO!=='undefined'){CONFIG_LOGO.url=URL_BRASAO_V37;CONFIG_LOGO.usarTextoEstilizado=false;}}catch(_){ }
+}
+
+function desenharCabecalhoRelatorioV37(doc,titulo,subtitulo,logo){
+  const largura=doc.internal.pageSize.width;
+  doc.setFillColor(15,47,87);doc.rect(0,0,largura,39,'F');doc.setFillColor(15,159,119);doc.rect(0,0,3.2,39,'F');
+  let x=14;
+  if(logo){
+    try{const formato=/^data:image\/jpe?g/i.test(logo)||/\.jpe?g(?:$|\?)/i.test(logo)?'JPEG':'PNG';doc.setFillColor(255,255,255);doc.roundedRect(6,4,31,28,2,2,'F');doc.addImage(logo,formato,7.5,5.5,28,24);x=43;}catch(_){ }
+  }
+  doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(14);doc.text(String(titulo||'Relat\u00f3rio'),x,13);
+  doc.setFont('helvetica','normal');doc.setFontSize(8.3);doc.text('Prefeitura Municipal de Mogi das Cruzes',x,21);doc.text('Secretaria Municipal de Sa\u00fade',x,27);
+  doc.setFontSize(7.4);doc.text(new Date().toLocaleString('pt-BR'),largura-12,18,{align:'right'});
+  if(subtitulo){const linhas=doc.splitTextToSize(String(subtitulo),Math.min(105,largura*.38));doc.text(linhas.slice(0,2),largura-12,25,{align:'right'});}
+  return 46;
+}
+
+function finalizarRodapesRelatorioV37(doc,resumo){
+  const total=doc.internal.getNumberOfPages();
+  for(let pagina=1;pagina<=total;pagina++){
+    doc.setPage(pagina);const largura=doc.internal.pageSize.width,altura=doc.internal.pageSize.height;
+    doc.setDrawColor(203,213,225);doc.setLineWidth(.2);doc.line(12,altura-12,largura-12,altura-12);
+    doc.setFont('helvetica','normal');doc.setFontSize(7.2);doc.setTextColor(100,116,139);doc.text('Prefeitura de Mogi das Cruzes \u00b7 Secretaria Municipal de Sa\u00fade',12,altura-7.5);doc.text(`${resumo} \u00b7 P\u00e1gina ${pagina} de ${total}`,largura-12,altura-7.5,{align:'right'});
+  }
+}
+
+function descricaoFiltrosDashboardUnificado(snapshot,adicionais=[]){
+  const f=snapshot.filtros,partes=[`Ano: ${f.ano==='todos'?'todos':f.ano}`,`Fonte: ${f.fonte==='todos'?'todas':ROTULO_FONTE_V37[f.fonte]}`];
+  if(f.status!=='todos')partes.push(`Situa\u00e7\u00e3o: ${f.status.replace('_',' ')}`);
+  if(f.subtipo!=='todos'){const registro=snapshot.todos.find(r=>r.subtipoChave===f.subtipo);partes.push(`Tipo: ${registro?.subtipo||f.subtipo}`);}
+  if(f.judicial!=='todos')partes.push(`Judicial: ${f.judicial==='sim'?'sim':'n\u00e3o'}`);
+  return partes.concat(adicionais).join(' | ');
+}
+
+function linhasRelatorioDashboardUnificado(fonte,registros){
+  if(fonte==='licitacao')return {titulo:'Licita\u00e7\u00f5es',cabecalho:['N\u00famero','Processo','Objeto','Modalidade','Status','Estimado','Valor final','Abertura','Conclus\u00e3o','Respons\u00e1vel'],linhas:registros.map(r=>[r.numero,r.original?.numeroProcesso||'\u2014',r.objeto,r.subtipo,r.statusOriginal,moedaDashboardUnificado(r.valor),r.temValorFinal?moedaDashboardUnificado(r.valorFinal):'N\u00e3o informado',formatarDataDashboardUnificado(r.data),formatarDataDashboardUnificado(dataLocalDashboardUnificado(r.original?.dataConclusao)),r.original?.responsavel||'N/I'])};
+  if(fonte==='requisicao')return {titulo:'Requisi\u00e7\u00f5es',cabecalho:['N\u00famero','Tipo','Objeto','Status','Prioridade','Valor','Entrada','Prazo'],linhas:registros.map(r=>[r.numero,r.subtipo,r.objeto,r.statusOriginal,r.original?.prioridade||'\u2014',moedaDashboardUnificado(r.valor),formatarDataDashboardUnificado(r.data),formatarDataDashboardUnificado(r.prazo)])};
+  return {titulo:'Contrata\u00e7\u00f5es Diretas',cabecalho:['N\u00famero','Tipo','Objeto','Natureza','Subelemento','Judicial','Status','Valor','Data'],linhas:registros.map(r=>[r.numero,r.subtipo,r.objeto,r.original?.natureza||'A classificar',r.original?.subelemento||'\u2014',r.judicial?'Sim':'N\u00e3o',r.statusOriginal,moedaDashboardUnificado(r.valor),formatarDataDashboardUnificado(r.data)])};
+}
+
+async function gerarPDFDashboardUnificadoV37(snapshot,opcoes={}){
+  if(!snapshot.registros.length){window.mostrarNotificacao?.('Nenhum registro encontrado para gerar o relat\u00f3rio.','info');return;}
+  window.mostrarNotificacao?.('Preparando relat\u00f3rio institucional...','info');await garantirDependenciasPDF();
+  if(!window.jspdf?.jsPDF)throw new Error('Biblioteca jsPDF n\u00e3o carregada.');
+  const {jsPDF}=window.jspdf,doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});if(typeof doc.autoTable!=='function')throw new Error('Complemento de tabelas do PDF n\u00e3o carregado.');
+  const logo=await carregarBrasaoInstitucionalV37(),filtros=opcoes.filtros||descricaoFiltrosDashboardUnificado(snapshot),titulo=opcoes.titulo||'Relat\u00f3rio Unificado de Licita\u00e7\u00f5es e Compras';
+  let y=desenharCabecalhoRelatorioV37(doc,titulo,filtros,logo);
+  doc.autoTable({startY:y,head:[['Indicador','Licita\u00e7\u00f5es','Requisi\u00e7\u00f5es','Contrata\u00e7\u00f5es diretas','Total de registros']],body:[
+    ['Registros',snapshot.porFonte.licitacao,snapshot.porFonte.requisicao,snapshot.porFonte.direta,snapshot.registros.length],
+    ['Ativos',snapshot.registros.filter(r=>r.fonte==='licitacao'&&r.statusClasse==='ativo').length,snapshot.registros.filter(r=>r.fonte==='requisicao'&&r.statusClasse==='ativo').length,snapshot.registros.filter(r=>r.fonte==='direta'&&r.statusClasse==='ativo').length,snapshot.porStatus.ativo],
+    ['Conclu\u00eddos',snapshot.registros.filter(r=>r.fonte==='licitacao'&&r.statusClasse==='concluido').length,snapshot.registros.filter(r=>r.fonte==='requisicao'&&r.statusClasse==='concluido').length,snapshot.registros.filter(r=>r.fonte==='direta'&&r.statusClasse==='concluido').length,snapshot.porStatus.concluido],
+    ['Exce\u00e7\u00f5es / n\u00e3o classificados',snapshot.registros.filter(r=>r.fonte==='licitacao'&&['excecao','nao_classificado'].includes(r.statusClasse)).length,snapshot.registros.filter(r=>r.fonte==='requisicao'&&['excecao','nao_classificado'].includes(r.statusClasse)).length,snapshot.registros.filter(r=>r.fonte==='direta'&&['excecao','nao_classificado'].includes(r.statusClasse)).length,snapshot.porStatus.excecao+snapshot.porStatus.nao_classificado]
+  ],theme:'grid',styles:{fontSize:8,cellPadding:2.6},headStyles:{fillColor:[23,79,142],textColor:255},alternateRowStyles:{fillColor:[245,248,252]},margin:{left:12,right:12}});
+  y=doc.lastAutoTable.finalY+7;
+  doc.autoTable({startY:y,head:[['Refer\u00eancia financeira','Valor','Cobertura / observa\u00e7\u00e3o']],body:[
+    ['Licita\u00e7\u00f5es \u2014 valor estimado',moedaDashboardUnificado(snapshot.financeiro.licitacaoEstimado),`${snapshot.porFonte.licitacao} registro(s)`],
+    ['Licita\u00e7\u00f5es \u2014 valor final',moedaDashboardUnificado(snapshot.financeiro.licitacaoFinal),`Informado em ${snapshot.financeiro.licitacaoFinalInformado} de ${snapshot.porFonte.licitacao}`],
+    ['Requisi\u00e7\u00f5es \u2014 valor informado',moedaDashboardUnificado(snapshot.financeiro.requisicao),`${snapshot.financeiro.requisicaoInformado} de ${snapshot.porFonte.requisicao} com valor`],
+    ['Contrata\u00e7\u00f5es diretas',moedaDashboardUnificado(snapshot.financeiro.direta),`N\u00e3o judicial: ${moedaDashboardUnificado(snapshot.financeiro.diretaNaoJudicial)} | Judicial: ${moedaDashboardUnificado(snapshot.financeiro.diretaJudicial)}`]
+  ],theme:'plain',styles:{fontSize:8.3,cellPadding:2.6},columnStyles:{0:{fontStyle:'bold',fillColor:[241,245,249]},1:{halign:'right'}},margin:{left:12,right:12}});
+  doc.setFontSize(7.5);doc.setTextColor(100,116,139);doc.text('Os valores dos m\u00f3dulos n\u00e3o devem ser somados, pois requisi\u00e7\u00f5es podem originar licita\u00e7\u00f5es.',12,doc.lastAutoTable.finalY+5);
+
+  if(opcoes.incluirGraficos===true)await new Promise(resolve=>setTimeout(resolve,520));
+  const graficos=opcoes.incluirGraficos===true?['unificado-status-chart','unificado-tipos-chart','unificado-mensal-chart'].filter(id=>PainelUnificadoV37.charts.has(id)).map(id=>document.getElementById(id)).filter(canvas=>canvas&&!canvas.hidden&&canvas.width>0&&canvas.height>0):[];
+  if(graficos.length){doc.addPage();desenharCabecalhoRelatorioV37(doc,'Vis\u00e3o Gr\u00e1fica',filtros,logo);const posicoes=[[12,48,130,61],[155,48,130,61],[32,118,232,70]];graficos.slice(0,3).forEach((canvas,indice)=>{try{doc.addImage(canvas.toDataURL('image/png'),'PNG',...posicoes[indice]);}catch(_){ }});}
+
+  for(const fonte of ['licitacao','requisicao','direta']){
+    const registros=snapshot.registros.filter(r=>r.fonte===fonte);if(!registros.length)continue;
+    const secao=linhasRelatorioDashboardUnificado(fonte,registros);doc.addPage();
+    const primeiraPaginaSecao=doc.internal.getNumberOfPages();
+    doc.autoTable({startY:48,head:[secao.cabecalho],body:secao.linhas,theme:'grid',styles:{fontSize:6.4,cellPadding:1.8,overflow:'linebreak'},headStyles:{fillColor:[23,79,142],textColor:255,fontSize:6.7},alternateRowStyles:{fillColor:[248,250,252]},columnStyles:{2:{cellWidth:fonte==='licitacao'?55:62}},margin:{top:47,bottom:17,left:8,right:8}});
+    const ultimaPaginaSecao=doc.internal.getNumberOfPages();
+    for(let pagina=primeiraPaginaSecao;pagina<=ultimaPaginaSecao;pagina++){doc.setPage(pagina);desenharCabecalhoRelatorioV37(doc,secao.titulo,`${filtros} | ${registros.length} registro(s)`,logo);}
+    doc.setPage(ultimaPaginaSecao);
+  }
+  finalizarRodapesRelatorioV37(doc,`${snapshot.registros.length} registro(s)`);
+  const arquivo=opcoes.arquivo||`relatorio_unificado_${PainelUnificadoV37.filtros.ano==='todos'?'todos':PainelUnificadoV37.filtros.ano}_${new Date().toISOString().slice(0,10)}.pdf`;
+  doc.save(arquivo);window.mostrarNotificacao?.(`Relat\u00f3rio gerado com ${snapshot.registros.length} registro(s).`,'success');
+}
+
+async function exportarRelatorioUnificadoPDF(){
+  renderizarDashboardUnificado();const snapshot=PainelUnificadoV37.snapshot;
+  try{await gerarPDFDashboardUnificadoV37(snapshot,{incluirGraficos:true});}catch(erro){console.error('[Relat\u00f3rio Unificado]',erro);window.mostrarNotificacao?.(`Erro ao gerar relat\u00f3rio: ${erro.message}`,'error');}
+}
+
+function exportarRelatorioUnificadoXLSX(){
+  try{
+    if(typeof XLSX==='undefined')throw new Error('Biblioteca Excel n\u00e3o carregada.');
+    const snapshot=criarSnapshotDashboardUnificado(lerDadosDashboardUnificado(),PainelUnificadoV37.filtros);if(!snapshot.registros.length){window.mostrarNotificacao?.('Nenhum registro encontrado para exportar.','info');return;}
+    const wb=XLSX.utils.book_new(),filtros=descricaoFiltrosDashboardUnificado(snapshot),resumo=XLSX.utils.aoa_to_sheet([
+      ['PREFEITURA MUNICIPAL DE MOGI DAS CRUZES'],['Secretaria Municipal de Sa\u00fade'],['Relat\u00f3rio Unificado de Licita\u00e7\u00f5es e Compras'],[],['Gerado em',new Date().toLocaleString('pt-BR')],['Filtros',filtros],[],['Indicador','Licita\u00e7\u00f5es','Requisi\u00e7\u00f5es','Contrata\u00e7\u00f5es diretas','Total'],['Registros',snapshot.porFonte.licitacao,snapshot.porFonte.requisicao,snapshot.porFonte.direta,snapshot.registros.length],['Ativos','','','',snapshot.porStatus.ativo],['Conclu\u00eddos','','','',snapshot.porStatus.concluido],['Exce\u00e7\u00f5es / n\u00e3o classificados','','','',snapshot.porStatus.excecao+snapshot.porStatus.nao_classificado],[],['Valores (n\u00e3o som\u00e1veis entre m\u00f3dulos)'],['Licita\u00e7\u00f5es \u2014 estimado',snapshot.financeiro.licitacaoEstimado],['Licita\u00e7\u00f5es \u2014 final',snapshot.financeiro.licitacaoFinal],['Requisi\u00e7\u00f5es',snapshot.financeiro.requisicao],['Contrata\u00e7\u00f5es diretas',snapshot.financeiro.direta]
+    ]);resumo['!cols']=[{wch:44},{wch:30},{wch:20},{wch:28},{wch:16}];resumo['!merges']=[{s:{r:0,c:0},e:{r:0,c:4}},{s:{r:1,c:0},e:{r:1,c:4}},{s:{r:2,c:0},e:{r:2,c:4}},{s:{r:13,c:0},e:{r:13,c:4}}];resumo['!rows']=[{hpt:24},{hpt:20},{hpt:22}];for(let linha=15;linha<=18;linha++){const celula=resumo[`B${linha}`];if(celula&&typeof celula.v==='number')celula.z='"R$" #,##0.00';}XLSX.utils.book_append_sheet(wb,resumo,'Resumo');
+    for(const fonte of ['licitacao','requisicao','direta']){
+      const registros=snapshot.registros.filter(r=>r.fonte===fonte);if(!registros.length)continue;
+      const linhas=fonte==='licitacao'?registros.map(r=>({'N\u00famero':r.numero,'Processo':r.original?.numeroProcesso||'','Objeto':r.objeto,'Modalidade':r.subtipo,'Status':r.statusOriginal,'Valor estimado':r.valor,'Valor final':r.temValorFinal?r.valorFinal:'','Entrada':formatarDataDashboardUnificado(r.data)})):fonte==='requisicao'?registros.map(r=>({'N\u00famero':r.numero,'Tipo':r.subtipo,'Processo':r.original?.numeroProcesso||'','Objeto':r.objeto,'Status':r.statusOriginal,'Prioridade':r.original?.prioridade||'','Valor':r.valor,'Entrada':formatarDataDashboardUnificado(r.data),'Prazo':formatarDataDashboardUnificado(r.prazo)})):registros.map(r=>({'N\u00famero':r.numero,'Tipo':r.subtipo,'Objeto':r.objeto,'Natureza':r.original?.natureza||'A classificar','Subelemento':r.original?.subelemento||'','Judicial':r.judicial?'Sim':'N\u00e3o','Status':r.statusOriginal,'Valor':r.valor,'Data':formatarDataDashboardUnificado(r.data)}));
+      const ws=XLSX.utils.json_to_sheet(linhas),chaves=Object.keys(linhas[0]);
+      ws['!cols']=chaves.map(chave=>{const maior=Math.max(chave.length,...linhas.map(linha=>String(linha[chave]??'').length)),descritiva=['Objeto','Natureza','Subelemento'].includes(chave),minimo=chave==='Objeto'?38:descritiva?24:12,maximo=chave==='Objeto'?70:descritiva?56:['Modalidade','Status'].includes(chave)?28:26;return {wch:Math.min(maximo,Math.max(minimo,maior+2))};});
+      ws['!rows']=[{hpt:24}];ws['!autofilter']={ref:`A1:${XLSX.utils.encode_col(chaves.length-1)}${linhas.length+1}`};
+      chaves.forEach((chave,coluna)=>{if(!/(valor|estimado|final)/i.test(normalizarDashboardUnificado(chave)))return;for(let linha=1;linha<=linhas.length;linha++){const celula=ws[XLSX.utils.encode_cell({r:linha,c:coluna})];if(celula&&typeof celula.v==='number')celula.z='"R$" #,##0.00';}});
+      XLSX.utils.book_append_sheet(wb,ws,fonte==='licitacao'?'Licitacoes':fonte==='requisicao'?'Requisicoes':'Contratacoes Diretas');
+    }
+    XLSX.writeFile(wb,`relatorio_unificado_${new Date().toISOString().slice(0,10)}.xlsx`);window.mostrarNotificacao?.(`Excel gerado com ${snapshot.registros.length} registro(s).`,'success');
+  }catch(erro){console.error('[Excel Unificado]',erro);window.mostrarNotificacao?.(`Erro ao gerar Excel: ${erro.message}`,'error');}
+}
+
+function filtrarLicitacoesRelatorioV37(){
+  const app=typeof AppState!=='undefined'?AppState:{licitacoes:[],filtros:{}},f=app.filtros||{};let lista=[...(app.licitacoes||[])];
+  if(f.status)lista=lista.filter(l=>l.situacao===f.status);if(f.modalidade)lista=lista.filter(l=>l.modalidade===f.modalidade);if(f.setor)lista=lista.filter(l=>l.setor===f.setor);
+  if(f.search){const termo=normalizarDashboardUnificado(f.search);lista=lista.filter(l=>[l.numeroLicitacao,l.objeto,l.responsavel,l.agenteContratacao,l.numeroProcesso].some(v=>normalizarDashboardUnificado(v).includes(termo)));}
+  return lista;
+}
+
+function filtrarDiretasRelatorioV37(){
+  const estado=window.EstadoDispensas||{dispensas:[],filtros:{}},f=estado.filtros||{};let lista=[...(estado.dispensas||[])];
+  if(f.tipoContratacao)lista=lista.filter(d=>normalizarDashboardUnificado(tipoDiretaDashboardUnificado(d))===normalizarDashboardUnificado(f.tipoContratacao));if(f.natureza)lista=lista.filter(d=>d.natureza===f.natureza);if(f.status)lista=lista.filter(d=>d.status===f.status);
+  if(f.judicial==='sim')lista=lista.filter(d=>d.ordemJudicial===true);else if(f.judicial==='nao')lista=lista.filter(d=>d.ordemJudicial!==true);
+  if(f.ano&&f.ano!=='todos')lista=lista.filter(d=>dataLocalDashboardUnificado(d.data)?.getFullYear()===Number(f.ano));
+  if(f.search){const termo=normalizarDashboardUnificado(f.search);lista=lista.filter(d=>[d.numero,d.objeto,d.fornecedor,d.natureza,d.subelemento,d.setor].some(v=>normalizarDashboardUnificado(v).includes(termo)));}
+  return lista;
+}
+
+async function exportarLicitacoesPDFV37(){
+  try{const lista=filtrarLicitacoesRelatorioV37(),app=typeof AppState!=='undefined'?AppState:{filtros:{}},snapshot=criarSnapshotDashboardUnificado({licitacoes:lista,requisicoes:[],diretas:[]},{ano:'todos',fonte:'licitacao',status:'todos',subtipo:'todos',judicial:'todos'}),filtros=Object.entries(app.filtros||{}).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join(' | ')||'Filtros: nenhum';await gerarPDFDashboardUnificadoV37(snapshot,{titulo:'Relat\u00f3rio de Licita\u00e7\u00f5es',filtros,arquivo:`licitacoes_${new Date().toISOString().slice(0,10)}.pdf`,incluirGraficos:false});}catch(erro){console.error(erro);window.mostrarNotificacao?.(`Erro ao gerar PDF: ${erro.message}`,'error');}
+}
+
+async function exportarContratacoesDiretasPDFV37(){
+  try{const lista=filtrarDiretasRelatorioV37(),f=window.EstadoDispensas?.filtros||{},snapshot=criarSnapshotDashboardUnificado({licitacoes:[],requisicoes:[],diretas:lista},{ano:'todos',fonte:'direta',status:'todos',subtipo:'todos',judicial:'todos'}),filtros=Object.entries(f).filter(([,v])=>v&&v!=='todos').map(([k,v])=>`${k}: ${v}`).join(' | ')||'Filtros: nenhum';await gerarPDFDashboardUnificadoV37(snapshot,{titulo:'Relat\u00f3rio de Contrata\u00e7\u00f5es Diretas',filtros,arquivo:`contratacoes_diretas_${new Date().toISOString().slice(0,10)}.pdf`,incluirGraficos:false});}catch(erro){console.error(erro);window.mostrarNotificacao?.(`Erro ao gerar PDF: ${erro.message}`,'error');}
+}
+
+const mostrarDashboardUnificadoLegadoV37=window.mostrarDashboardUnificado;
+window.mostrarDashboardUnificadoLegado=mostrarDashboardUnificadoLegadoV37;
+window.mostrarDashboardUnificado=abrirDashboardUnificadoV37;
+window.renderizarDashboardUnificado=renderizarDashboardUnificado;
+window.alterarFiltroDashboardUnificado=alterarFiltroDashboardUnificado;
+window.limparFiltrosDashboardUnificado=limparFiltrosDashboardUnificado;
+window.exportarRelatorioUnificadoPDF=exportarRelatorioUnificadoPDF;
+window.exportarRelatorioUnificadoXLSX=exportarRelatorioUnificadoXLSX;
+window.exportarRelatorioCompleto=exportarRelatorioUnificadoPDF;
+window.exportarPDF=exportarLicitacoesPDFV37;
+window.exportarDispensasPDF=exportarContratacoesDiretasPDFV37;
+window.carregarBrasaoBase64=carregarBrasaoInstitucionalV37;
+window.brasaoParaBase64=carregarBrasaoInstitucionalV37;
+window.desenharCabecalhoPDF=async(doc,titulo,subtitulo)=>desenharCabecalhoRelatorioV37(doc,titulo,subtitulo,await carregarBrasaoInstitucionalV37());
+const processarUploadBrasaoAnteriorV37=window.processarUploadBrasao;
+if(typeof processarUploadBrasaoAnteriorV37==='function')window.processarUploadBrasao=function(...args){const retorno=processarUploadBrasaoAnteriorV37.apply(this,args);setTimeout(aplicarBrasaoInstitucionalV37,350);return retorno;};
+const removerBrasaoAnteriorV37=window.removerBrasao;
+if(typeof removerBrasaoAnteriorV37==='function')window.removerBrasao=function(...args){const retorno=removerBrasaoAnteriorV37.apply(this,args);PainelUnificadoV37.brasaoPromise=null;setTimeout(aplicarBrasaoInstitucionalV37,0);return retorno;};
+try{mostrarDashboardUnificado=window.mostrarDashboardUnificado;exportarRelatorioCompleto=window.exportarRelatorioCompleto;exportarPDF=window.exportarPDF;exportarDispensasPDF=window.exportarDispensasPDF;carregarBrasaoBase64=window.carregarBrasaoBase64;brasaoParaBase64=window.brasaoParaBase64;desenharCabecalhoPDF=window.desenharCabecalhoPDF;}catch(_){ }
+
+const mostrarAbaAnteriorV37=window.mostrarAba;
+window.mostrarAba=function(nome){const destino=['dashboard','dashboardRequisicoes'].includes(nome)?'unificado':nome;garantirAbaDashboardUnificado();const retorno=typeof mostrarAbaAnteriorV37==='function'?mostrarAbaAnteriorV37.call(this,destino):undefined;if(destino==='unificado')setTimeout(renderizarDashboardUnificado,0);return retorno;};
+try{mostrarAba=window.mostrarAba;}catch(_){ }
+const carregarDadosAnteriorV37=window.carregarDados;
+if(typeof carregarDadosAnteriorV37==='function'){window.carregarDados=async function(){const retorno=await carregarDadosAnteriorV37.apply(this,arguments);if(document.getElementById('unificado')?.classList.contains('active'))setTimeout(renderizarDashboardUnificado,0);return retorno;};try{carregarDados=window.carregarDados;}catch(_){ }}
+
+function iniciarDashboardUnificadoV37(){carregarFiltrosDashboardUnificado();garantirAbaDashboardUnificado();carregarBrasaoInstitucionalV37().then(aplicarBrasaoInstitucionalV37);setTimeout(aplicarBrasaoInstitucionalV37,450);setTimeout(aplicarBrasaoInstitucionalV37,1800);const abaAtual=typeof AppState!=='undefined'?AppState.ui?.currentTab:null;if(['dashboard','dashboardRequisicoes','unificado'].includes(abaAtual))abrirDashboardUnificadoV37();}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',iniciarDashboardUnificadoV37);else iniciarDashboardUnificadoV37();
+setTimeout(()=>{garantirAbaDashboardUnificado();aplicarBrasaoInstitucionalV37();},2400);
+
+window.PainelUnificadoV37=PainelUnificadoV37;
+window.__dashboardUnificadoV37Testes={normalizarDashboardUnificado,numeroDashboardUnificado,dataLocalDashboardUnificado,classeStatusDashboardUnificado,tipoDiretaDashboardUnificado,construirRegistrosDashboardUnificado,filtrarRegistrosDashboardUnificado,criarSnapshotDashboardUnificado};
+console.log('\u2705 v37 \u2014 Dashboard unificado e relat\u00f3rios institucionais ativos');
 })();
 </script>
 
