@@ -15574,12 +15574,78 @@ CC.decorarDispensas=function(){
 const decorarAnterior=CC.decorarTodos.bind(CC);
 CC.decorarTodos=function(){ decorarAnterior(); this.decorarRequisicoes(); this.decorarDispensas(); };
 
+function extrairOcorrenciasDetalhe(registro){
+    const tabelas=Array.isArray(registro?.dados_detalhe?.tabelas)?registro.dados_detalhe.tabelas:[];
+    const ocorrencias=[];
+    tabelas.forEach((tabela,indiceTabela)=>{
+        const linhas=Array.isArray(tabela?.rows)?tabela.rows:[];
+        const cabecalhos=Array.isArray(tabela?.headers)?tabela.headers.map(item=>
+            String(item||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase()
+        ):[];
+        const ehTabelaOcorrencias=tabela?.eh_ocorrencias===true ||
+            (cabecalhos.includes('#') && cabecalhos.includes('data') && cabecalhos.includes('descricao'));
+        if(!ehTabelaOcorrencias)return;
+        linhas.forEach((dadosLinha,indiceLinha)=>{
+            if(!dadosLinha || typeof dadosLinha!=='object' || Array.isArray(dadosLinha))return;
+            const codigo=String(dadosLinha['#']??dadosLinha.ID??dadosLinha.Id??'').trim();
+            const descricao=String(dadosLinha['Descrição']??dadosLinha.Descricao??dadosLinha.descricao??'').trim();
+            const data=String(dadosLinha.Data??dadosLinha.data??'').trim();
+            if(!codigo || !descricao)return;
+            ocorrencias.push({
+                ordem:Number(codigo)||((indiceTabela+1)*100000+indiceLinha),
+                ocorrido_em:null,
+                etapa:'',
+                descricao,
+                local_atual:'',
+                responsavel:'',
+                dados:{...dadosLinha,'#':codigo,Data:data}
+            });
+        });
+    });
+    return ocorrencias;
+}
+
+function chaveOcorrenciaOficial(item){
+    const dadosLinha=item?.dados||{};
+    const codigo=String(dadosLinha['#']??dadosLinha.ID??dadosLinha.Id??'').trim();
+    if(codigo)return `codigo:${codigo}`;
+    const data=String(item?.ocorrido_em||dadosLinha.Data||dadosLinha.data||'').trim().toLowerCase();
+    const descricao=String(item?.descricao||dadosLinha['Descrição']||dadosLinha.Descricao||'').trim().toLowerCase();
+    return `conteudo:${data}|${descricao}`;
+}
+
+function tempoOcorrenciaOficial(item){
+    const dadosLinha=item?.dados||{};
+    const valor=String(item?.ocorrido_em||dadosLinha.Data||dadosLinha.data||'').trim();
+    const dataBr=valor.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if(dataBr)return Date.UTC(Number(dataBr[3]),Number(dataBr[2])-1,Number(dataBr[1]));
+    const tempo=Date.parse(valor);
+    return Number.isFinite(tempo)?tempo:0;
+}
+
+function mesclarOcorrenciasOficiais(andamentos,registro){
+    const combinadas=[];
+    const chaves=new Set();
+    const persistidas=Array.isArray(andamentos)?andamentos:[];
+    [...persistidas,...extrairOcorrenciasDetalhe(registro)].forEach(item=>{
+        const chave=chaveOcorrenciaOficial(item);
+        if(chaves.has(chave))return;
+        chaves.add(chave);
+        combinadas.push(item);
+    });
+    return combinadas.sort((a,b)=>
+        (tempoOcorrenciaOficial(b)-tempoOcorrenciaOficial(a)) ||
+        ((Number(b?.ordem)||0)-(Number(a?.ordem)||0))
+    );
+}
+
 CC.verDetalhes=async function(consultaId,consultaTipo){
     const x=this.porId(consultaId,consultaTipo); if(!x)return;
     let andamentos=[];
     try{
         andamentos=await this.fetchJson(`consulta_compras_andamentos?consulta_id=eq.${encodeURIComponent(consultaId)}&consulta_tipo=eq.${encodeURIComponent(consultaTipo)}&dados->>%23=not.is.null&select=*&order=ocorrido_em.desc.nullslast,ordem.desc&limit=1000`);
     }catch(e){console.warn(e)}
+    andamentos=mesclarOcorrenciasOficiais(andamentos,x);
 
     const dados=x.dados_detalhe||{}, campos=dados.campos||{}, refs=this.refsOficiais(x);
     const kv=Object.entries(campos).filter(([,v])=>String(v??'').trim()).slice(0,120)

@@ -140,6 +140,49 @@ regression('filtro judicial combina com o tipo de contratacao', () => {
   return judiciais === 3 && naoJudiciais === 2 && filtrar().length === 1;
 });
 
+regression('ocorrencias usam o detalhe embutido e eliminam duplicatas da tabela', () => {
+  const context = {};
+  context.extrairOcorrenciasDetalhe = compileNamedFunction('extrairOcorrenciasDetalhe', context);
+  context.chaveOcorrenciaOficial = compileNamedFunction('chaveOcorrenciaOficial', context);
+  context.tempoOcorrenciaOficial = compileNamedFunction('tempoOcorrenciaOficial', context);
+  context.mesclarOcorrenciasOficiais = compileNamedFunction('mesclarOcorrenciasOficiais', context);
+  const registro = { dados_detalhe: { tabelas: [
+    {
+      headers: ['ID', 'Data', 'Descrição'],
+      rows: [{ ID: 'item-1', Data: '15/08/2026', 'Descrição': 'Linha de item, não ocorrência' }]
+    },
+    {
+      headers: ['#', 'Data', 'Descrição'],
+      rows: [
+        { '#': '11629', Data: '01/06/2026', 'Descrição': 'Aguardando documentos' },
+        { '#': '11741', Data: '10/06/2026', 'Descrição': 'Conferência de edital' },
+        { '#': '12063', Data: '23/06/2026', 'Descrição': 'Análise da PGM' },
+        { '#': '12190', Data: '14/07/2026', 'Descrição': 'Retorno da PGM' },
+        { '#': '12307', Data: '22/07/2026', 'Descrição': 'Apontamentos respondidos' },
+        { '#': '13332', Data: '29/07/2026', 'Descrição': 'Sessão agendada' },
+        { '#': '13514', Data: '07/08/2026', 'Descrição': 'Retomada em 11/08' },
+        { '#': '13544', Data: '12/08/2026', 'Descrição': 'Retomada em 12/08' },
+        { '#': '13590', Data: '14/08/2026', 'Descrição': 'Retomada em 18/08' }
+      ]
+    }
+  ] } };
+  const persistida = {
+    ordem: 13544,
+    ocorrido_em: '2026-08-12T00:00:00Z',
+    descricao: 'Retomada em 12/08',
+    dados: { '#': '13544', Data: '12/08/2026', 'Descrição': 'Retomada em 12/08' }
+  };
+  const somenteDetalhe = context.mesclarOcorrenciasOficiais([], registro);
+  const mescladas = context.mesclarOcorrenciasOficiais([persistida], registro);
+  const dataBr = context.tempoOcorrenciaOficial({ dados: { Data: '14/08/2026' } });
+  const dataIso = context.tempoOcorrenciaOficial({ ocorrido_em: '2026-08-12T00:00:00Z' });
+  const dataInvalida = context.tempoOcorrenciaOficial({ dados: { Data: 'inválida' } });
+  return somenteDetalhe.length === 9 && somenteDetalhe[0].dados['#'] === '13590' &&
+    somenteDetalhe.at(-1).dados['#'] === '11629' && mescladas.length === 9 &&
+    mescladas.filter(item => item.dados['#'] === '13544').length === 1 &&
+    dataBr > dataIso && dataInvalida === 0;
+});
+
 regression('natureza 3.3.50.85 nao recebe limite ficticio nem bloqueia valor', () => {
   const codigo = '3.3.50.85 - Transferencias por meio de Contrato de Gestao';
   const limite = compileNamedFunction('obterLimiteNatureza', { DISPENSA_CONFIG: { limites: { [codigo]: 0 } } });
@@ -211,6 +254,7 @@ const requiredRegressionPatterns = [
   ['select judicial lido pelo filtro final', /e\.filtros\.judicial\s*=\s*document\.getElementById\('filtro-judicial-dispensa'\)/u],
   ['ocorrencias oficiais filtradas pela chave JSON', /dados->>%23=not\.is\.null/u],
   ['ocorrencias com datas nulas por ultimo', /order=ocorrido_em\.desc\.nullslast,ordem\.desc/u],
+  ['ocorrencias embutidas usadas como fallback', /andamentos\s*=\s*mesclarOcorrenciasOficiais\(andamentos,x\)/u],
   ['natureza 3.3.50.85 exibida sem limite ficticio', /3\.3\.50\.85 - Transferências por meio de Contrato de Gestão['"]\s*:\s*0/u],
   ['configuracao preserva a natureza sem limite', /semLimiteDispensa\s*\?\s*0\s*:\s*val/u],
   ['renderer nao exibe denominador zero', /limiteAplicavel\s*\?\s*` de <strong>\$\{moeda\(limite\)\}<\/strong>`\s*:\s*''/u],
