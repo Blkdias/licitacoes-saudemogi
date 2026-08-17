@@ -3260,36 +3260,60 @@ function renderWorkflowProgress(l) {
             if (opt) { opt.selected = false; atualizarChipsRequisicoes(); }
         }
 
+        function encontrarLicitacaoDaRequisicao(idRequisicao) {
+            const id = String(idRequisicao);
+            return AppState.licitacoes.find(l =>
+                String(l.requisicaoOrigemId ?? '') === id ||
+                (l.requisicoesOrigem || []).some(reqId => String(reqId) === id)
+            );
+        }
+
         function gerarLicitacaoDaRequisicao(idRequisicao) {
+            if (!SistemaAuth.verificarPermissao('criar_licitacao')) { mostrarNotificacao('Acesso negado.', 'error'); return; }
             const req = AppState.requisicoes.find(r => r.id === idRequisicao);
             if (!req) { mostrarNotificacao('Requisição não encontrada', 'error'); return; }
-            AppState.ui.editandoId = null;
+
+            const existente = encontrarLicitacaoDaRequisicao(idRequisicao);
+            if (existente) {
+                mostrarNotificacao(`A requisição ${req.numero} já está vinculada à licitação ${existente.numeroLicitacao}.`, 'info');
+                editarLicitacao(existente.id);
+                return;
+            }
+
+            adicionarLicitacao();
             document.getElementById('modal-titulo').textContent = '📋 Gerar Licitação da Requisição';
             document.getElementById('numero-licitacao').value = `LIC-${req.numero}`;
-            document.getElementById('objeto').value = req.objeto;
-            document.getElementById('setor').value = req.setorOrigem;
-            document.getElementById('responsavel-modal').value = req.responsavel;
+            document.getElementById('numero-processo-licitacao').value = req.numeroProcesso || '';
+            document.getElementById('objeto').value = req.objeto || '';
+            document.getElementById('setor').value = req.setorOrigem || '';
+            document.getElementById('responsavel-modal').value = req.responsavel || '';
             document.getElementById('valor').value = req.valor || 0;
-            document.getElementById('data-abertura').value = new Date().toISOString().split('T')[0];
-            const dataConclusao = new Date(); dataConclusao.setDate(dataConclusao.getDate() + 30);
-            document.getElementById('data-conclusao').value = dataConclusao.toISOString().split('T')[0];
-            carregarRequisicoesParaLicitacao();
-            setTimeout(() => {
+
+            const fluxo = document.getElementById('fluxo-licitacao');
+            if (fluxo) {
+                const fluxoPersonalizado = req.fluxoPersonalizado && req.fluxoId &&
+                    Array.from(fluxo.options).some(opt => opt.value === String(req.fluxoId));
+                fluxo.value = fluxoPersonalizado ? String(req.fluxoId) : (req.emergencial ? 'emergencial' : 'padrao');
+                atualizarPreviewFluxoLicitacao();
+            }
+
+            const selecionarOrigem = () => {
                 const opt = document.querySelector(`#requisicoes-origem option[value="${req.id}"]`);
                 if (opt) { opt.selected = true; atualizarChipsRequisicoes(); }
-            }, 100);
-            document.getElementById('modal-licitacao').style.display = 'block';
+            };
+            selecionarOrigem();
+            setTimeout(selecionarOrigem, 0);
         }
 
         function criarLicitacaoComFluxoRequisicao(idRequisicao, dadosBase) {
             const req = AppState.requisicoes.find(r => r.id === idRequisicao);
             if (!req) return dadosBase;
-            let workflow = [];
+            let workflow = Array.isArray(dadosBase.workflow) ? [...dadosBase.workflow] : [];
             if (req.fluxoPersonalizado && req.fluxoId) {
                 const fluxo = AppState.fluxos.find(f => f.id === req.fluxoId);
-                if (fluxo?.sequencia) workflow = fluxo.sequencia;
+                if (!workflow.length && fluxo?.sequencia) workflow = [...fluxo.sequencia];
             }
-            if (!workflow.length) workflow = FLUXOS_PADRAO[req.tipo] || FLUXOS_LICITACAO.padrao;
+            if (!workflow.length) workflow = [...(req.emergencial ? FLUXOS_LICITACAO.emergencial : FLUXOS_LICITACAO.padrao)];
             return { ...dadosBase, workflow, workflowIndex: 0, setorAtual: workflow[0] || 'Elaboração do Edital', historicoWorkflow: [{ setor: workflow[0] || 'Elaboração do Edital', acao: 'Criação da Licitação', data: new Date().toISOString(), responsavel: dadosBase.responsavel || 'Sistema', observacao: `Gerada da requisição ${req.numero}` }], geradaDeRequisicao: true, requisicaoOrigemId: idRequisicao };
         }
 
@@ -4544,8 +4568,14 @@ window.salvarLicitacao = function(event) {
             }];
         }
         
+        const requisicoesOrigem = Array.from(document.getElementById('requisicoes-origem').selectedOptions)
+            .map(opt => parseInt(opt.value));
+        const origemGeradaExistente = licExistente?.requisicaoOrigemId;
+        const manterOrigemGerada = licExistente?.geradaDeRequisicao &&
+            requisicoesOrigem.some(reqId => String(reqId) === String(origemGeradaExistente));
+
         // Criar objeto da licitação
-        const dadosLicitacao = {
+        let dadosLicitacao = {
             id,
             numeroLicitacao: document.getElementById('numero-licitacao').value.trim(),
             numeroProcesso: document.getElementById('numero-processo-licitacao').value?.trim() || '',
@@ -4561,8 +4591,9 @@ window.salvarLicitacao = function(event) {
             horaAbertura: document.getElementById('hora-abertura').value || '09:00',
             dataConclusao: converterDataParaISO(dataConclusao),
             observacoes: document.getElementById('observacoes').value || '',
-            requisicoesOrigem: Array.from(document.getElementById('requisicoes-origem').selectedOptions)
-                                   .map(opt => parseInt(opt.value)),
+            requisicoesOrigem,
+            geradaDeRequisicao: manterOrigemGerada || undefined,
+            requisicaoOrigemId: manterOrigemGerada ? origemGeradaExistente : undefined,
             dataCriacao: licExistente?.dataCriacao || new Date().toISOString(),
             workflow,
             workflowIndex,
@@ -4570,6 +4601,12 @@ window.salvarLicitacao = function(event) {
             historicoWorkflow,
             fluxoOrigemId
         };
+
+        // Uma licitação nova com uma única origem herda o fluxo da requisição e
+        // registra metadados que permitem rastrear e impedir geração duplicada.
+        if (!licExistente && requisicoesOrigem.length === 1) {
+            dadosLicitacao = criarLicitacaoComFluxoRequisicao(requisicoesOrigem[0], dadosLicitacao);
+        }
         
         // Salvar
         const index = AppState.licitacoes.findIndex(l => l.id === id);
@@ -4580,10 +4617,47 @@ window.salvarLicitacao = function(event) {
             AppState.licitacoes.push(dadosLicitacao);
             mostrarNotificacao('✅ Licitação criada com sucesso!', 'success');
         }
+
+        requisicoesOrigem.forEach(idRequisicao => {
+            const req = AppState.requisicoes.find(r => r.id === idRequisicao);
+            if (!req) return;
+            const jaVinculada = String(req.licitacaoId ?? '') === String(id) ||
+                (req.historico || []).some(h => String(h.licitacaoId ?? '') === String(id)) ||
+                (licExistente?.requisicoesOrigem || []).some(reqId => String(reqId) === String(idRequisicao));
+            if (!jaVinculada) {
+                req.licitacaoId = id;
+                if (!['Concluída', 'Cancelada', 'Reprovada'].includes(req.status)) req.status = 'Em Licitação';
+                req.historico = Array.isArray(req.historico) ? req.historico : [];
+                req.historico.push({
+                    setor: 'Licitação',
+                    acao: `Vinculada à licitação ${dadosLicitacao.numeroLicitacao}`,
+                    data: new Date().toISOString(),
+                    responsavel: dadosLicitacao.responsavel || 'Sistema',
+                    licitacaoId: id
+                });
+            }
+        });
+
+        (licExistente?.requisicoesOrigem || [])
+            .filter(idAnterior => !requisicoesOrigem.some(idAtual => String(idAtual) === String(idAnterior)))
+            .forEach(idAnterior => {
+                const req = AppState.requisicoes.find(r => String(r.id) === String(idAnterior));
+                if (!req) return;
+                if (String(req.licitacaoId ?? '') === String(id)) delete req.licitacaoId;
+                req.historico = Array.isArray(req.historico) ? req.historico : [];
+                req.historico.push({
+                    setor: 'Licitação',
+                    acao: `Desvinculada da licitação ${dadosLicitacao.numeroLicitacao}`,
+                    data: new Date().toISOString(),
+                    responsavel: dadosLicitacao.responsavel || 'Sistema',
+                    licitacaoId: id
+                });
+            });
         
         salvarDados();
         window.fecharModal();
         renderizarLicitacoes();
+        renderizarRequisicoes();
         atualizarDashboard();
         
     } catch (error) {
@@ -11176,13 +11250,15 @@ console.log('✅ Patch v25.5 — Ordenação de requisições corrigida');
                 'Serviços de Terceiros': 65492,
                 'Obras e Serviços de Engenharia': 131000,
                 'Outras Despesas': 65492,
+                '3.3.50.85 - Transferências por meio de Contrato de Gestão': 0,
             },
             // Subelementos sugeridos (apenas para referência)
             subelementos: {
                 'Material de Consumo': ['3.3.90.30 - Material de Consumo', '3.3.90.32 - Material de Distribuição Gratuita'],
                 'Serviços de Terceiros': ['3.3.90.36 - Serviços de Terceiros Pessoa Física', '3.3.90.39 - Outros Serviços de Terceiros'],
                 'Obras e Serviços de Engenharia': ['4.4.90.51 - Obras e Instalações', '4.4.90.52 - Serviços de Engenharia'],
-                'Outras Despesas': ['3.3.90.40 - Serviços de Tecnologia da Informação', '3.3.90.41 - Serviços de Publicidade']
+                'Outras Despesas': ['3.3.90.40 - Serviços de Tecnologia da Informação', '3.3.90.41 - Serviços de Publicidade'],
+                '3.3.50.85 - Transferências por meio de Contrato de Gestão': []
             }
         };
 
@@ -11313,7 +11389,10 @@ console.log('✅ Patch v25.5 — Ordenação de requisições corrigida');
         // FUNÇÕES DE CÁLCULO DE LIMITES
         // ============================================================
         function obterLimiteNatureza(natureza) {
-            return DISPENSA_CONFIG.limites[natureza] || 66492;
+            if (Object.prototype.hasOwnProperty.call(DISPENSA_CONFIG.limites, natureza)) {
+                return Number(DISPENSA_CONFIG.limites[natureza]) || 0;
+            }
+            return 66492;
         }
 
         function calcularTotalGastoNatureza(natureza, ano = null) {
@@ -11351,7 +11430,7 @@ console.log('✅ Patch v25.5 — Ordenação de requisições corrigida');
             const novoTotal = totalAtual + (parseFloat(valor) || 0);
             const limite = obterLimiteNatureza(natureza);
             return {
-                ok: novoTotal <= limite,
+                ok: limite <= 0 || novoTotal <= limite,
                 totalAtual: totalAtual,
                 novoTotal: novoTotal,
                 limite: limite,
@@ -12063,8 +12142,9 @@ console.log('✅ Patch v25.5 — Ordenação de requisições corrigida');
             for (let i = 0; i < naturezas.length; i++) {
                 const nome = naturezas[i].value.trim();
                 const val = limparValor(valores[i].value);
-                if (nome && val > 0) {
-                    novosLimites[nome] = val;
+                const semLimiteDispensa = nome === '3.3.50.85 - Transferências por meio de Contrato de Gestão';
+                if (nome && (val > 0 || semLimiteDispensa)) {
+                    novosLimites[nome] = semLimiteDispensa ? 0 : val;
                     // Mantém subelementos padrão se existirem
                     if (DISPENSA_CONFIG.subelementos[nome]) {
                         novosSubelementos[nome] = DISPENSA_CONFIG.subelementos[nome];
@@ -12104,13 +12184,15 @@ console.log('✅ Patch v25.5 — Ordenação de requisições corrigida');
                 'Material de Consumo': 65492,
                 'Serviços de Terceiros': 65492,
                 'Obras e Serviços de Engenharia': 131000,
-                'Outras Despesas': 65492
+                'Outras Despesas': 65492,
+                '3.3.50.85 - Transferências por meio de Contrato de Gestão': 0
             };
             DISPENSA_CONFIG.subelementos = {
                 'Material de Consumo': ['3.3.90.30 - Material de Consumo', '3.3.90.32 - Material de Distribuição Gratuita'],
                 'Serviços de Terceiros': ['3.3.90.36 - Serviços de Terceiros Pessoa Física', '3.3.90.39 - Outros Serviços de Terceiros'],
                 'Obras e Serviços de Engenharia': ['4.4.90.51 - Obras e Instalações', '4.4.90.52 - Serviços de Engenharia'],
-                'Outras Despesas': ['3.3.90.40 - Serviços de Tecnologia da Informação', '3.3.90.41 - Serviços de Publicidade']
+                'Outras Despesas': ['3.3.90.40 - Serviços de Tecnologia da Informação', '3.3.90.41 - Serviços de Publicidade'],
+                '3.3.50.85 - Transferências por meio de Contrato de Gestão': []
             };
             EstadoDispensas.naturezas = Object.keys(DISPENSA_CONFIG.limites);
             try {
@@ -13415,6 +13497,10 @@ console.log('✅ Patch v25.5 — Ordenação de requisições corrigida');
                 '3.3.90.39.03 - Serviços de Publicidade (PJ)'
             ]
         },
+        '3.3.50.85 - Transferências por meio de Contrato de Gestão': {
+            limite: 0,
+            subelementos: []
+        },
         '4.4.90.51 - Obras e Serviços de Engenharia': {
             limite: 131000,
             subelementos: [
@@ -14132,6 +14218,7 @@ console.log('✅ Patch v25.5 — Ordenação de requisições corrigida');
         '3.3.90.30 - Material de Consumo': '339030',
         '3.3.90.36 - Serviços de Terceiros (PF)': '339036',
         '3.3.90.39 - Serviços de Terceiros (PJ)': '339039',
+        '3.3.50.85 - Transferências por meio de Contrato de Gestão': '335085',
         '4.4.90.51 - Obras e Serviços de Engenharia': '449051',
         // Para outras naturezas que possam surgir, use um prefixo vazio (não filtra)
         // e mostrará todos os subelementos – ou adicione mapeamentos adicionais.
@@ -14296,6 +14383,7 @@ console.log('✅ Patch v25.5 — Ordenação de requisições corrigida');
         '3.3.90.30 - Material de Consumo': 66492,
         '3.3.90.36 - Serviços de Terceiros (PF)': 66492,
         '3.3.90.39 - Serviços de Terceiros (PJ)': 66492,
+        '3.3.50.85 - Transferências por meio de Contrato de Gestão': 0,
         '4.4.90.51 - Obras e Serviços de Engenharia': 131000  // ← CORREÇÃO
     };
 
@@ -14398,6 +14486,7 @@ console.log('✅ Patch v25.5 — Ordenação de requisições corrigida');
         '3.3.90.30 - Material de Consumo': 66492,
         '3.3.90.36 - Serviços de Terceiros (PF)': 66492,
         '3.3.90.39 - Serviços de Terceiros (PJ)': 66492,
+        '3.3.50.85 - Transferências por meio de Contrato de Gestão': 0,
         '4.4.90.51 - Obras e Serviços de Engenharia': 131000
     };
 
@@ -14524,17 +14613,18 @@ console.log('✅ Patch v25.5 — Ordenação de requisições corrigida');
             const limite = window.DISPENSA_CONFIG.limites[nat] || 0;
             const gasto = calcularTotalGastoNatureza(nat, ano);
             const percentual = limite > 0 ? (gasto / limite) * 100 : 0;
+            const limiteAplicavel = limite > 0;
 
             html += `
                 <div class="card-limite-natureza-item" style="border-left-color: ${gasto > 0 ? '#2563eb' : '#94a3b8'};">
                     <div style="font-weight:700;font-size:0.9rem;color:var(--text);">${nat}</div>
                     <div style="display:flex;justify-content:space-between;margin:0.3rem 0;">
-                        <span class="valor-limite" style="color:var(--primary);">${formatarMoeda(limite)}</span>
+                        <span class="valor-limite" style="color:var(--primary);">${limiteAplicavel ? formatarMoeda(limite) : 'Sem limite legal de dispensa'}</span>
                         <span class="valor-gasto" style="color:${percentual >= 100 ? '#dc2626' : '#10b981'};">${formatarMoeda(gasto)}</span>
                     </div>
-                    <div class="progresso-limite">
+                    ${limiteAplicavel ? `<div class="progresso-limite">
                         <div class="fill" style="width:${Math.min(percentual, 100)}%;background:${percentual >= 100 ? '#dc2626' : (percentual >= 80 ? '#f59e0b' : '#10b981')};"></div>
-                    </div>
+                    </div>` : ''}
                 </div>
             `;
         });
@@ -15488,7 +15578,7 @@ CC.verDetalhes=async function(consultaId,consultaTipo){
     const x=this.porId(consultaId,consultaTipo); if(!x)return;
     let andamentos=[];
     try{
-        andamentos=await this.fetchJson(`consulta_compras_andamentos?consulta_id=eq.${encodeURIComponent(consultaId)}&consulta_tipo=eq.${encodeURIComponent(consultaTipo)}&select=*&order=ordem.asc,ocorrido_em.asc&limit=1000`);
+        andamentos=await this.fetchJson(`consulta_compras_andamentos?consulta_id=eq.${encodeURIComponent(consultaId)}&consulta_tipo=eq.${encodeURIComponent(consultaTipo)}&dados->>%23=not.is.null&select=*&order=ocorrido_em.desc.nullslast,ordem.desc&limit=1000`);
     }catch(e){console.warn(e)}
 
     const dados=x.dados_detalhe||{}, campos=dados.campos||{}, refs=this.refsOficiais(x);
@@ -15936,8 +16026,8 @@ if(CC && !CC.__v363Fetch){
     let p=path;
     const ehOcorrencias=typeof p==='string' && p.startsWith('consulta_compras_andamentos?');
     if(ehOcorrencias){
-      if(/(?:^|&)order=/.test(p)) p=p.replace(/order=[^&]*/,'order=ocorrido_em.desc,ordem.desc');
-      else p += (p.includes('?')?'&':'?')+'order=ocorrido_em.desc,ordem.desc';
+      if(/(?:^|&)order=/.test(p)) p=p.replace(/order=[^&]*/,'order=ocorrido_em.desc.nullslast,ordem.desc');
+      else p += (p.includes('?')?'&':'?')+'order=ocorrido_em.desc.nullslast,ordem.desc';
     }
     const out=await fetchAnterior(p,options);
     if(ehOcorrencias && Array.isArray(out)){
@@ -16089,6 +16179,8 @@ function listaFiltrada365(){
   if(f.tipoContratacao) lista=lista.filter(d=>window.tipoContratacaoV365(d)===f.tipoContratacao);
   if(f.natureza) lista=lista.filter(d=>d.natureza===f.natureza);
   if(f.status) lista=lista.filter(d=>d.status===f.status);
+  if(f.judicial==='sim') lista=lista.filter(d=>d.ordemJudicial===true);
+  else if(f.judicial==='nao') lista=lista.filter(d=>d.ordemJudicial!==true);
   if(f.ano && f.ano!=='todos'){
     const alvo=parseInt(f.ano);
     lista=lista.filter(d=>{ const dt=d.data?new Date(d.data):null; return dt && !Number.isNaN(dt.getTime()) && dt.getFullYear()===alvo; });
@@ -16147,17 +16239,18 @@ window.renderizarDispensasV365=function(){
     const limite=Number(limiteFn(d.natureza)||0);
     const gasto=Number(gastoNatFn(d.natureza,ano)||0);
     const gastoSub=d.subelemento?Number(gastoSubFn(d.natureza,d.subelemento,ano)||0):gasto;
+    const limiteAplicavel=limite>0;
     const percentual=limite>0?(gastoSub/limite)*100:0;
     let classeLimite='safe'; if(percentual>=100)classeLimite='critical';else if(percentual>=80)classeLimite='danger';else if(percentual>=60)classeLimite='warning';
     let statusClass='badge-info'; if(d.status==='Concluída')statusClass='badge-success';else if(d.status==='Em Andamento')statusClass='badge-warning';else if(d.status==='Cancelada')statusClass='badge-danger';
     const tipo=window.tipoContratacaoV365(d), tipoLabel=tipo==='inexigibilidade'?'Inexigibilidade':'Dispensa';
     return `<div class="dispensa-card" data-tipo-contratacao="${tipo}">
       <div class="card-header"><h4><span class="badge-tipo-contratacao v365 ${tipo}">${tipoLabel}</span><span class="badge-natureza">${n(d.natureza)}</span> ${n(d.numero)} ${d.subelemento?`<span class="badge-subelemento">${n(d.subelemento)}</span>`:''} <span class="badge ${statusClass}">${n(d.status)}</span></h4>
-      <div><span class="dispensa-limite-utilizado ${classeLimite}">${percentual.toFixed(0)}% do limite</span><button class="btn-icon" onclick="editarDispensa(${Number(d.id)})" title="Editar">✏️</button><button class="btn-icon danger" onclick="excluirDispensa(${Number(d.id)})" title="Excluir">🗑️</button></div></div>
+      <div><span class="dispensa-limite-utilizado ${classeLimite}">${limiteAplicavel ? `${percentual.toFixed(0)}% do limite` : 'Sem limite legal de dispensa'}</span><button class="btn-icon" onclick="editarDispensa(${Number(d.id)})" title="Editar">✏️</button><button class="btn-icon danger" onclick="excluirDispensa(${Number(d.id)})" title="Excluir">🗑️</button></div></div>
       <div class="card-body"><p><strong>Objeto:</strong> ${n(d.objeto)}</p><div class="workflow-meta"><div><strong>Valor:</strong> <span style="font-weight:700;color:var(--primary);">${moeda(d.valor)}</span></div><div><strong>Data:</strong> ${data(d.data)}</div><div><strong>Fornecedor:</strong> ${n(d.fornecedor||'Não informado')}</div>${d.setor?`<div><strong>Setor:</strong> ${n(d.setor)}</div>`:''}</div>
       ${d.justificativa?`<div class="dispensa-justificativa"><strong>Justificativa:</strong> ${n(d.justificativa)}</div>`:''}
-      ${d.subelemento?`<div class="dispensa-acumulado"><div style="display:flex;justify-content:space-between;font-size:.8rem;"><span>Gasto acumulado no subelemento "${n(d.subelemento)}" (${ano}):</span><span><strong style="color:${gastoSub>limite?'#dc2626':'inherit'};">${moeda(gastoSub)}</strong> de <strong>${moeda(limite)}</strong></span></div><div class="barra-limite"><div class="fill" style="width:${Math.min(percentual,100)}%;background:${percentual>=100?'#dc2626':(percentual>=80?'#f59e0b':'#10b981')};"></div></div></div>`:''}
-      <div class="dispensa-acumulado" style="${d.subelemento?'margin-top:.4rem;opacity:.75;':''}"><div style="display:flex;justify-content:space-between;font-size:.8rem;"><span>Gasto acumulado em ${n(d.natureza)} (${ano}):</span><span><strong>${moeda(gasto)}</strong> de <strong>${moeda(limite)}</strong></span></div>${!d.subelemento?`<div class="barra-limite"><div class="fill" style="width:${Math.min(percentual,100)}%;background:${percentual>=100?'#dc2626':(percentual>=80?'#f59e0b':'#10b981')};"></div></div>`:''}</div>
+      ${d.subelemento?`<div class="dispensa-acumulado"><div style="display:flex;justify-content:space-between;font-size:.8rem;"><span>Gasto acumulado no subelemento "${n(d.subelemento)}" (${ano}):</span><span><strong style="color:${limiteAplicavel&&gastoSub>limite?'#dc2626':'inherit'};">${moeda(gastoSub)}</strong>${limiteAplicavel?` de <strong>${moeda(limite)}</strong>`:''}</span></div>${limiteAplicavel?`<div class="barra-limite"><div class="fill" style="width:${Math.min(percentual,100)}%;background:${percentual>=100?'#dc2626':(percentual>=80?'#f59e0b':'#10b981')};"></div></div>`:''}</div>`:''}
+      <div class="dispensa-acumulado" style="${d.subelemento?'margin-top:.4rem;opacity:.75;':''}"><div style="display:flex;justify-content:space-between;font-size:.8rem;"><span>Gasto acumulado em ${n(d.natureza)} (${ano}):</span><span><strong>${moeda(gasto)}</strong>${limiteAplicavel?` de <strong>${moeda(limite)}</strong>`:''}</span></div>${!d.subelemento&&limiteAplicavel?`<div class="barra-limite"><div class="fill" style="width:${Math.min(percentual,100)}%;background:${percentual>=100?'#dc2626':(percentual>=80?'#f59e0b':'#10b981')};"></div></div>`:''}</div>
       ${d.observacoes?`<div style="font-size:.8rem;color:var(--text-light);margin-top:.5rem;">📝 ${n(d.observacoes)}</div>`:''}</div></div>`;
   }).join('');
 
@@ -16182,6 +16275,7 @@ window.filtrarDispensasV365=function(){
   e.filtros.tipoContratacao=document.getElementById('filtro-tipo-contratacao-dispensa')?.value||'';
   e.filtros.natureza=document.getElementById('filtro-natureza-dispensa')?.value||'';
   e.filtros.status=document.getElementById('filtro-status-dispensa')?.value||'';
+  e.filtros.judicial=document.getElementById('filtro-judicial-dispensa')?.value||'';
   e.filtros.ano=document.getElementById('filtro-ano-dispensa')?.value||'todos';
   e.pagina=1;
   window.renderizarDispensasV365();
