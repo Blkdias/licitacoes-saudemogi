@@ -5910,7 +5910,7 @@ function iniciarAutoAtualizacao() {
    ============================================================ */
 document.addEventListener('DOMContentLoaded', function() {
     injetarIndicadorConexao();
-    iniciarAutoAtualizacao();
+    // Sem polling: atualizacao publica somente sob demanda.
 });
 
 // Expõe para debug
@@ -6363,7 +6363,7 @@ function _iniciarAutoAtualizacao() {
    ============================================================ */
 document.addEventListener('DOMContentLoaded', function() {
     _injetarIndicador();
-    _iniciarAutoAtualizacao();
+    // Sem polling: nao reler o snapshot central a cada 60 segundos.
 });
 
 window.SupabaseClient = SupabaseClient;
@@ -14812,19 +14812,25 @@ const CC = {
         this.carregando=true;
         this.atualizarIndicador('sync','Consulta Compras...');
         try{
-            const [externos,vinculos]=await Promise.all([
-                this.fetchJson('consulta_compras?select=*&order=sincronizado_em.desc&limit=5000', {headers:{Range:'0-4999'}}),
-                this.fetchJson('integracao_vinculos?select=*&limit=5000', {headers:{Range:'0-4999'}})
+            const base=new URL('./data/consulta-compras/',document.baseURI);
+            const manifestResp=await fetch(new URL('manifest.json',base),{cache:'no-cache'});
+            if(!manifestResp.ok) throw new Error(`Snapshot publico HTTP ${manifestResp.status}`);
+            const manifest=await manifestResp.json();
+            const [externosResp,vinculosResp]=await Promise.all([
+                fetch(new URL(manifest.consultas||'consultas.json',base),{cache:'no-cache'}),
+                fetch(new URL(manifest.vinculos||'vinculos.json',base),{cache:'no-cache'})
             ]);
+            if(!externosResp.ok||!vinculosResp.ok) throw new Error('Arquivos do snapshot publico indisponiveis');
+            const [externos,vinculos]=await Promise.all([externosResp.json(),vinculosResp.json()]);
             this.externos=Array.isArray(externos)?externos:[];
             this.vinculos=Array.isArray(vinculos)?vinculos:[];
             this.carregado=true;
             this.ultimaCarga=new Date();
-            this.atualizarIndicador('ok',`${this.externos.length} oficiais`);
+            this.atualizarIndicador('ok',`${this.externos.length} oficiais · snapshot publico`);
             this.decorarTodos();
         }catch(e){
-            console.warn('[ConsultaCompras] Falha ao carregar:',e);
-            this.atualizarIndicador('erro','Consulta Compras offline');
+            console.warn('[ConsultaCompras] Snapshot publico indisponivel:',e);
+            this.atualizarIndicador('erro','Snapshot publico indisponivel');
         }finally{this.carregando=false;}
     },
 
@@ -14894,10 +14900,7 @@ const CC = {
     async verDetalhes(consultaId,consultaTipo){
         const x=this.porId(consultaId,consultaTipo);
         if(!x) return;
-        let andamentos=[];
-        try{
-            andamentos=await this.fetchJson(`consulta_compras_andamentos?consulta_id=eq.${encodeURIComponent(consultaId)}&consulta_tipo=eq.${encodeURIComponent(consultaTipo)}&select=*&order=ordem.asc,ocorrido_em.asc&limit=1000`);
-        }catch(e){ console.warn(e); }
+        const andamentos=[];
         const dados=x.dados_detalhe||{};
         const campos=dados.campos||{};
         const kv=Object.entries(campos).slice(0,80).map(([k,v])=>`<dt>${this.esc(k)}</dt><dd>${this.esc(typeof v==='object'?JSON.stringify(v):v)}</dd>`).join('');
@@ -14908,7 +14911,7 @@ const CC = {
             <p class="cc-oficial-muted">Processo ${this.esc(x.numero_processo||'—')} · Última sincronização ${this.data(x.sincronizado_em)}</p>
             ${kv?`<h3 style="margin-top:1rem">Dados do processo</h3><dl class="cc-kv">${kv}</dl>`:''}
             <h3 style="margin-top:1rem">Tramitação / andamento</h3>
-            <div class="table-container" style="max-height:420px;overflow:auto"><table class="cc-modal-table"><thead><tr><th>Data</th><th>Etapa</th><th>Descrição</th><th>Local</th><th>Responsável</th></tr></thead><tbody>${linhas||'<tr><td colspan="5">Nenhum andamento estruturado foi identificado; os dados brutos permanecem armazenados no Supabase.</td></tr>'}</tbody></table></div>
+            <div class="table-container" style="max-height:420px;overflow:auto"><table class="cc-modal-table"><thead><tr><th>Data</th><th>Etapa</th><th>Descrição</th><th>Local</th><th>Responsável</th></tr></thead><tbody>${linhas||'<tr><td colspan="5">Nenhum andamento estruturado foi identificado no snapshot público.</td></tr>'}</tbody></table></div>
             <div style="margin-top:1rem;text-align:right"><button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Fechar</button></div>
         </div>`;
         document.body.appendChild(modal);
@@ -15065,7 +15068,9 @@ window.salvarDados=async function(){
 window.carregarDados=async function(){
     if(typeof _injetarIndicador==='function') _injetarIndicador();
     let row=null;
-    try{row=await SupabaseClient.ler();}catch(e){console.warn(e)}
+    const usuario=AuthSeguro.usuario(), sessao=AuthSeguro.session();
+    const podeLerDadosInternos=['admin','gestor'].includes(usuario.nivel) && !!sessao?.access_token;
+    if(podeLerDadosInternos){try{row=await SupabaseClient.ler();}catch(e){console.warn(e)}}
     if(row){
         AppState.licitacoes=row.licitacoes||[]; AppState.requisicoes=row.requisicoes||[]; AppState.setores=row.setores||[];
         AppState.modalidades=row.modalidades||[]; AppState.fluxos=row.fluxos||[]; AppState.dispensas=row.dispensas||[];
@@ -15087,7 +15092,6 @@ window.carregarDados=async function(){
     try{if(AppState.requisicoes.length) ultimoIdRequisicao=Math.max(...AppState.requisicoes.map(r=>r.id||0));}catch(e){}
     try{ atualizarDashboard();renderizarRequisicoes();window.renderizarLicitacoes();renderizarCalendario(); }catch(e){console.warn(e)}
     try{ if(window.renderizarDispensas) window.renderizarDispensas(); if(window.atualizarResumoLimites) window.atualizarResumoLimites(); }catch(e){}
-    CC.carregar();
     return row;
 };
 
@@ -15147,11 +15151,9 @@ document.addEventListener('DOMContentLoaded',()=>{
             localStorage.removeItem('usuario_logado');
             document.getElementById('app-container').style.display='none';document.getElementById('login-screen').style.display='flex';
         }
-        CC.carregar();
     },50);
 });
 
-setInterval(()=>CC.carregar(true),5*60*1000);
 console.log('✅ Patch v33 — Consulta Compras + Supabase Auth/RLS + dispensas ativo');
 })();
 </script>
@@ -15295,7 +15297,7 @@ function cc34CriarAba(){
     const tab=document.createElement('div');
     tab.id='tab-consulta-compras';
     tab.className='tab';
-    tab.setAttribute('onclick',"mostrarAba('consulta-compras'); setTimeout(renderizarPainelConsultaCompras,0)");
+    tab.setAttribute('onclick',"mostrarAba('consulta-compras'); ConsultaComprasIntegracao.carregar().then(()=>renderizarPainelConsultaCompras())");
     tab.innerHTML='<i>🏛️</i> Consulta Compras';
     const licTab=[...tabs.querySelectorAll('.tab')].find(x=>(x.getAttribute('onclick')||'').includes("'licitacoes'"));
     if(licTab && licTab.nextSibling) tabs.insertBefore(tab,licTab.nextSibling); else tabs.appendChild(tab);
@@ -15310,7 +15312,7 @@ function cc34CriarAba(){
         <div class="cc34-head">
           <div>
             <h2 style="margin:0">🏛️ Integração — Consulta Compras</h2>
-            <p class="cc34-sub">Dados oficiais são coletados pelo sincronizador Windows e armazenados no Supabase. O navegador não envia a senha do Consulta Compras.</p>
+            <p class="cc34-sub">Dados oficiais são coletados pelo sincronizador Windows e publicados em um snapshot JSON. O navegador não acessa o Supabase nem recebe a senha do Consulta Compras.</p>
           </div>
           <button class="btn btn-outline" onclick="ConsultaComprasIntegracao.carregar(true).then(()=>renderizarPainelConsultaCompras())">🔄 Atualizar leitura</button>
         </div>
@@ -15371,8 +15373,8 @@ window.renderizarPainelConsultaCompras=function(){
     if(!externos.length){
         conteudo.innerHTML=`<div class="cc34-empty">
           <h3>⚠️ Nenhum dado do Consulta Compras sincronizado ainda</h3>
-          <p>A integração do site já está ativa, mas o Supabase ainda não recebeu registros do portal Consulta Compras.</p>
-          <p><b>Próxima etapa:</b> executar <code>executar_sincronizacao.bat</code> em uma máquina autorizada da Prefeitura. Depois disso esta aba será preenchida automaticamente e os cards de Licitações receberão o bloco <b>“Dados oficiais — Consulta Compras”</b>.</p>
+          <p>A integração do site está ativa, mas o snapshot JSON publicado ainda não contém registros do portal Consulta Compras.</p>
+          <p><b>Próxima etapa:</b> concluir a execução do <code>executar_sincronizacao.bat</code> em uma máquina autorizada da Prefeitura. Depois da publicação dos JSON, use <b>Atualizar leitura</b> ou abra novamente esta aba.</p>
         </div>`;
         return;
     }
@@ -15627,11 +15629,7 @@ function mesclarOcorrenciasOficiais(andamentos,registro){
 
 CC.verDetalhes=async function(consultaId,consultaTipo){
     const x=this.porId(consultaId,consultaTipo); if(!x)return;
-    let andamentos=[];
-    try{
-        andamentos=await this.fetchJson(`consulta_compras_andamentos?consulta_id=eq.${encodeURIComponent(consultaId)}&consulta_tipo=eq.${encodeURIComponent(consultaTipo)}&dados->>%23=not.is.null&select=*&order=ocorrido_em.desc.nullslast,ordem.desc&limit=1000`);
-    }catch(e){console.warn(e)}
-    andamentos=mesclarOcorrenciasOficiais(andamentos,x);
+    const andamentos=mesclarOcorrenciasOficiais([],x);
 
     const dados=x.dados_detalhe||{}, campos=dados.campos||{}, refs=this.refsOficiais(x);
     const kv=Object.entries(campos).filter(([,v])=>String(v??'').trim()).slice(0,120)
@@ -15692,16 +15690,6 @@ const _rDisp=window.renderizarDispensas; if(typeof _rDisp==='function'){window.r
 const _carregar=CC.carregar.bind(CC);
 CC.carregar=async function(forcar=false){
     const r=await _carregar(forcar);
-    if(forcar || !this.__centralV36){
-        try{
-            const row=await SupabaseClient.ler();
-            if(row){
-                AppState.dispensas=row.dispensas||[]; if(window.EstadoDispensas) window.EstadoDispensas.dispensas=row.dispensas||[];
-                try{localStorage.setItem('dispensas',JSON.stringify(row.dispensas||[]))}catch(e){}
-                this.__centralV36=true; if(window.renderizarDispensas) window.renderizarDispensas();
-            }
-        }catch(e){console.warn('[v36] snapshot central:',e)}
-    }
     setTimeout(()=>this.decorarTodos(),0); return r;
 };
 

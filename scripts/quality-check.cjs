@@ -308,9 +308,9 @@ if (!fs.existsSync(brasaoPath)) {
 const requiredRegressionPatterns = [
   ['funcoes de gasto expostas ao renderer final', /window\.calcularTotalGastoNatureza\s*=\s*calcularTotalGastoNatureza[\s\S]*window\.calcularTotalGastoSubelemento\s*=\s*calcularTotalGastoSubelemento/u],
   ['select judicial lido pelo filtro final', /e\.filtros\.judicial\s*=\s*document\.getElementById\('filtro-judicial-dispensa'\)/u],
-  ['ocorrencias oficiais filtradas pela chave JSON', /dados->>%23=not\.is\.null/u],
-  ['ocorrencias com datas nulas por ultimo', /order=ocorrido_em\.desc\.nullslast,ordem\.desc/u],
-  ['ocorrencias embutidas usadas como fallback', /andamentos\s*=\s*mesclarOcorrenciasOficiais\(andamentos,x\)/u],
+  ['consulta publica carregada do snapshot estatico', /new URL\('\.\/data\/consulta-compras\/',document\.baseURI\)/u],
+  ['ocorrencias embutidas usadas sem leitura remota', /const andamentos\s*=\s*mesclarOcorrenciasOficiais\(\[\],x\)/u],
+  ['leitura interna restrita a sessao autenticada', /podeLerDadosInternos=\['admin','gestor'\]\.includes\(usuario\.nivel\)/u],
   ['natureza 3.3.50.85 exibida sem limite ficticio', /3\.3\.50\.85 - Transferências por meio de Contrato de Gestão['"]\s*:\s*0/u],
   ['configuracao preserva a natureza sem limite', /semLimiteDispensa\s*\?\s*0\s*:\s*val/u],
   ['renderer nao exibe denominador zero', /limiteAplicavel\s*\?\s*` de <strong>\$\{moeda\(limite\)\}<\/strong>`\s*:\s*''/u],
