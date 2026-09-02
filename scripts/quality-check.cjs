@@ -308,9 +308,9 @@ if (!fs.existsSync(brasaoPath)) {
 const requiredRegressionPatterns = [
   ['funcoes de gasto expostas ao renderer final', /window\.calcularTotalGastoNatureza\s*=\s*calcularTotalGastoNatureza[\s\S]*window\.calcularTotalGastoSubelemento\s*=\s*calcularTotalGastoSubelemento/u],
   ['select judicial lido pelo filtro final', /e\.filtros\.judicial\s*=\s*document\.getElementById\('filtro-judicial-dispensa'\)/u],
-  ['ocorrencias oficiais filtradas pela chave JSON', /dados->>%23=not\.is\.null/u],
-  ['ocorrencias com datas nulas por ultimo', /order=ocorrido_em\.desc\.nullslast,ordem\.desc/u],
-  ['ocorrencias embutidas usadas como fallback', /andamentos\s*=\s*mesclarOcorrenciasOficiais\(andamentos,x\)/u],
+  ['consulta publica carregada do snapshot estatico', /new URL\('\.\/data\/consulta-compras\/',document\.baseURI\)/u],
+  ['ocorrencias embutidas usadas sem leitura remota', /const andamentos\s*=\s*mesclarOcorrenciasOficiais\(\[\],x\)/u],
+  ['leitura interna restrita a sessao autenticada', /podeLerDadosInternos=\['admin','gestor'\]\.includes\(usuario\.nivel\)/u],
   ['natureza 3.3.50.85 exibida sem limite ficticio', /3\.3\.50\.85 - Transferências por meio de Contrato de Gestão['"]\s*:\s*0/u],
   ['configuracao preserva a natureza sem limite', /semLimiteDispensa\s*\?\s*0\s*:\s*val/u],
   ['renderer nao exibe denominador zero', /limiteAplicavel\s*\?\s*` de <strong>\$\{moeda\(limite\)\}<\/strong>`\s*:\s*''/u],
@@ -331,6 +331,18 @@ const requiredRegressionPatterns = [
   ,['chamadas legadas sempre abrem a visao geral', /const destino=\['dashboard','dashboardRequisicoes'\]\.includes\(nome\)\?'unificado':nome/u]
   ,['atalho de dashboard abre a visao geral', /Ctrl \+ D = Vis\u00e3o Geral[\s\S]*mostrarAba\('unificado'\)/u]
 ];
+
+const forbiddenEgressPatterns = [
+  ['leitura publica direta de consulta_compras no Supabase', /consulta_compras\?select=/u],
+  ['leitura publica direta de integracao_vinculos no Supabase', /integracao_vinculos\?select=/u],
+  ['leitura avulsa de andamentos no Supabase', /consulta_compras_andamentos\?/u],
+  ['polling de Consulta Compras a cada cinco minutos', /setInterval\(\(\)=>CC\.carregar\(true\),5\*60\*1000\)/u],
+  ['resposta completa depois de gravacao no Supabase', /return=representation/u],
+  ['selecao irrestrita da tabela central', /sistema_dados[^\n`'"]*select=\*/u]
+];
+for (const [description, pattern] of forbiddenEgressPatterns) {
+  if (pattern.test(html)) fail(`egress excessivo: ${description}.`);
+}
 for (const [description, pattern] of requiredRegressionPatterns) {
   if (!pattern.test(html)) fail(`protecao ausente: ${description}.`);
 }
