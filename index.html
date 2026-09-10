@@ -11381,12 +11381,17 @@ console.log('✅ Patch v25.5 — Ordenação de requisições corrigida');
             return 66492;
         }
 
+        function ehOrdemJudicial(dispensa) {
+            const valor = dispensa?.ordemJudicial;
+            return valor === true || String(valor || '').trim().toLowerCase() === 'true';
+        }
+
         function calcularTotalGastoNatureza(natureza, ano = null) {
             if (!ano) ano = new Date().getFullYear();
             return EstadoDispensas.dispensas
                 .filter(d => d.natureza === natureza &&
                     d.status !== 'Cancelada' &&
-                    d.ordemJudicial !== true &&
+                    !ehOrdemJudicial(d) &&
                     new Date(d.data).getFullYear() === ano)
                 .reduce((sum, d) => sum + (parseFloat(d.valor) || 0), 0);
         }
@@ -11401,7 +11406,7 @@ console.log('✅ Patch v25.5 — Ordenação de requisições corrigida');
                 .filter(d => d.natureza === natureza &&
                     d.subelemento === subelemento &&
                     d.status !== 'Cancelada' &&
-                    d.ordemJudicial !== true &&
+                    !ehOrdemJudicial(d) &&
                     d.id !== ignorarId &&
                     new Date(d.data).getFullYear() === ano)
                 .reduce((sum, d) => sum + (parseFloat(d.valor) || 0), 0);
@@ -15015,6 +15020,9 @@ try{ _ehAdmin = function(){ return AuthSeguro.podeEditar(); }; }catch(e){}
 
 // Usa JWT do usuário autenticado; o Supabase não é consultado por visitantes.
 if(typeof SupabaseClient!=='undefined'){
+    // Controle otimista: impede que uma aba aberta antes do sincronizador
+    // sobrescreva licitações/dispensas criadas por ele com um snapshot antigo.
+    SupabaseClient.versaoCarregada=null;
     SupabaseClient._headers=function(){
         const s=AuthSeguro.session(); const bearer=s?.access_token||SUPABASE_CONFIG.key;
         return {apikey:SUPABASE_CONFIG.key,Authorization:`Bearer ${bearer}`,'Content-Type':'application/json','Prefer':'return=minimal'};
@@ -15024,25 +15032,59 @@ if(typeof SupabaseClient!=='undefined'){
             const token=await AuthSeguro.token(); const bearer=token||SUPABASE_CONFIG.key;
             const campos='licitacoes,requisicoes,setores,modalidades,fluxos,dispensas,atualizado_em,atualizado_por';
             const resp=await fetch(`${SUPABASE_CONFIG.url}/rest/v1/${SUPABASE_CONFIG.tabela}?id=eq.1&select=${campos}`,{headers:{apikey:SUPABASE_CONFIG.key,Authorization:`Bearer ${bearer}`},signal:AbortSignal.timeout(10000)});
-            if(!resp.ok) throw new Error(`HTTP ${resp.status}`); const rows=await resp.json(); return rows[0]||null;
+            if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const rows=await resp.json(), row=rows[0]||null;
+            SupabaseClient.versaoCarregada=row?.atualizado_em||null;
+            return row;
         }catch(e){console.warn('[Supabase v33] Falha ao ler:',e.message);return null;}
     };
     SupabaseClient.salvar=async function(dados){
         try{
             const token=await AuthSeguro.token();
             if(!token) throw new Error('Sessão administrativa expirada');
+            if(!SupabaseClient.versaoCarregada){
+                const erro=new Error('Dados sem versão carregada; atualize a página antes de salvar.');
+                erro.conflito=true;
+                throw erro;
+            }
+            const novaVersao=new Date().toISOString();
             const payload={
                 licitacoes:dados.licitacoes||[], requisicoes:dados.requisicoes||[], setores:dados.setores||[],
                 modalidades:dados.modalidades||[], fluxos:dados.fluxos||[], dispensas:dados.dispensas||[],
-                atualizado_em:new Date().toISOString(), atualizado_por:_obterNomeUsuario()
+                atualizado_em:novaVersao, atualizado_por:_obterNomeUsuario()
             };
-            const resp=await fetch(`${SUPABASE_CONFIG.url}/rest/v1/${SUPABASE_CONFIG.tabela}?id=eq.1`,{
-                method:'PATCH',headers:{apikey:SUPABASE_CONFIG.key,Authorization:`Bearer ${token}`,'Content-Type':'application/json','Prefer':'return=minimal'},
+            const versao=encodeURIComponent(SupabaseClient.versaoCarregada);
+            const url=`${SUPABASE_CONFIG.url}/rest/v1/${SUPABASE_CONFIG.tabela}?id=eq.1&atualizado_em=eq.${versao}&select=atualizado_em`;
+            const resp=await fetch(url,{
+                method:'PATCH',headers:{apikey:SUPABASE_CONFIG.key,Authorization:`Bearer ${token}`,'Content-Type':'application/json','Prefer':'return=representation'},
                 body:JSON.stringify(payload),signal:AbortSignal.timeout(12000)
             });
             if(!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+            const alteradas=await resp.json();
+            if(!alteradas.length){
+                const erro=new Error('Os dados foram atualizados por outra sessão ou pelo sincronizador. Recarregue a página.');
+                erro.conflito=true;
+                throw erro;
+            }
+            SupabaseClient.versaoCarregada=novaVersao;
             return {ok:true};
-        }catch(e){console.error('[Supabase v33] Falha ao salvar:',e);return null;}
+        }catch(e){
+            if(e?.conflito) return {ok:false,conflito:true,mensagem:e.message};
+            console.error('[Supabase v33] Falha ao salvar:',e);return null;
+        }
+    };
+    // Alguns formulários antigos disparam mais de um salvamento em sequência.
+    // A fila mantém a versão otimista correta entre essas gravações.
+    const _salvarComVersao=SupabaseClient.salvar.bind(SupabaseClient);
+    SupabaseClient._filaSalvar=Promise.resolve();
+    SupabaseClient.salvar=function(dados){
+        const snapshot=JSON.parse(JSON.stringify(dados||{}));
+        const tarefa=SupabaseClient._filaSalvar.then(
+            ()=>_salvarComVersao(snapshot),
+            ()=>_salvarComVersao(snapshot)
+        );
+        SupabaseClient._filaSalvar=tarefa;
+        return tarefa;
     };
 }
 
@@ -15061,7 +15103,11 @@ window.salvarDados=async function(){
     if(!AuthSeguro.podeEditar()) return;
     if(typeof _atualizarIndicador==='function') _atualizarIndicador('sync','Salvando...','Enviando ao Supabase com RLS');
     const r=await SupabaseClient.salvar({licitacoes:AppState.licitacoes,requisicoes:AppState.requisicoes,setores:AppState.setores,modalidades:AppState.modalidades,fluxos:AppState.fluxos,dispensas});
-    if(r!==null){ if(typeof _atualizarIndicador==='function') _atualizarIndicador('online','🔐 Supabase Auth','Salvo com RLS'); }
+    if(r?.ok){ if(typeof _atualizarIndicador==='function') _atualizarIndicador('online','🔐 Supabase Auth','Salvo com RLS'); }
+    else if(r?.conflito){
+        if(typeof _atualizarIndicador==='function') _atualizarIndicador('offline','⚠ Dados atualizados','Recarregue a página antes de salvar novamente');
+        if(typeof mostrarNotificacao==='function') mostrarNotificacao('Os dados foram atualizados pelo sincronizador ou por outra sessão. Recarregue a página para preservar as alterações mais recentes.','warning');
+    }
     else if(typeof mostrarNotificacao==='function') mostrarNotificacao('⚠️ Salvo localmente, mas o Supabase recusou a gravação. Verifique a sessão/RLS.','warning');
 };
 
